@@ -59,6 +59,7 @@ fn main() {
         let mut shmem_as_slice = shmem.as_mut_slice();
 
         let edges_observer = HitcountsMapObserver::new(ConstMapObserver::<_, MAP_SIZE>::new(
+            // Must be the same name for all fuzzing instances with the same configuration, otherwise the whole thing crashes
             "shared_mem",
             &mut shmem_as_slice,
         ));
