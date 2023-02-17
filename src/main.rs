@@ -40,6 +40,9 @@ struct Arguments {
     debug_logfile: String,
     #[arg(short, long, default_value = "false")]
     attach_to_running_broker: bool,
+    #[arg(short='C', long, default_value = "false", help="If enabled, the config is derived from the executable path, which enables all fuzzers of the broker running the same executable to share test cases in an easier fashion. Use unique config by default.")]
+    config_from_name: bool,
+
 }
 
 
@@ -167,8 +170,12 @@ fn main() {
         .monitor(stats)
         // Let all fuzzing instances fuzzing the same binary use the same config for now.
         // Let's them exchange every input without needing to rerun it
-        .configuration(EventConfig::from_name(args.path_to_binary.to_str().unwrap()))
-        // .configuration(AlwaysUnique)
+        .configuration(
+            if args.config_from_name {
+                EventConfig::from_name(args.path_to_binary.to_str().unwrap())
+            } else {
+                AlwaysUnique
+            })
         .run_client(&mut run_client)
         .broker_port(args.broker_port)
         .cores(&args.cores)
