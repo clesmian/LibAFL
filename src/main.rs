@@ -190,7 +190,7 @@ fn main() {
     {
         Ok(()) => (),
         Err(Error::ShuttingDown) => println!("Fuzzing stopped by user. Good bye."),
-        Err(err) => panic!("Failed to run launcher: {err:?}"),
+        Err(err) => panic!("Failed to run launcher: {:?}", err),
     }
 
 
