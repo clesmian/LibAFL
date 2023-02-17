@@ -89,7 +89,7 @@ fn main() {
         //     let queue_corpus = InMemoryCorpus::<BytesInput>::new();
         // }
 
-        let queue_corpus = OnDiskCorpus::new(args.output_dir.join(PathBuf::from("queue")))
+        let queue_corpus = OnDiskCorpus::new(args.output_dir.join(format!("queue_{}", core_id)))
                 .expect("Could not create queue corpus");
         // let queue_corpus = InMemoryCorpus::<BytesInput>::new();
 
