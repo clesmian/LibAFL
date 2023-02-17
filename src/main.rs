@@ -94,7 +94,7 @@ fn main() {
         // let queue_corpus = InMemoryCorpus::<BytesInput>::new();
 
         let mut state = state.unwrap_or_else(|| {StdState::new(
-                StdRand::with_seed(current_nanos() ^ (111 * core_id as u64)),
+                StdRand::with_seed(current_nanos()),
                 queue_corpus,
                 solution_corpus,
                 &mut feedback,
