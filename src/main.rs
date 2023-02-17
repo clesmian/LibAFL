@@ -3,7 +3,7 @@ use libafl::bolts::{current_nanos, AsMutSlice};
 use libafl::corpus::Corpus;
 use libafl::corpus::{OnDiskCorpus};
 use libafl::inputs::BytesInput;
-use libafl::prelude::{havoc_mutations, tuple_list, AflMapFeedback, ConstMapObserver, CrashFeedback, ForkserverExecutor, HasCorpus, HitcountsMapObserver, QueueScheduler, ShMem, ShMemProvider, SpliceMutator, StdRand, StdScheduledMutator, StdShMemProvider, TimeFeedback, TimeObserver, TimeoutFeedback, TimeoutForkserverExecutor, Launcher, Cores, InMemoryCorpus, OnDiskTOMLMonitor, EventConfig};
+use libafl::prelude::{havoc_mutations, tuple_list, AflMapFeedback, ConstMapObserver, CrashFeedback, ForkserverExecutor, HasCorpus, HitcountsMapObserver, ShMem, ShMemProvider, SpliceMutator, StdRand, StdScheduledMutator, StdShMemProvider, TimeFeedback, TimeObserver, TimeoutFeedback, TimeoutForkserverExecutor, Launcher, Cores, InMemoryCorpus, OnDiskTOMLMonitor, EventConfig, MultiMonitor, StdWeightedScheduler};
 use libafl::schedulers::IndexesLenTimeMinimizerScheduler;
 use libafl::stages::StdMutationalStage;
 use libafl::state::StdState;
@@ -123,7 +123,7 @@ fn main() {
             StdMutationalStage::new(mutator2)
         );
 
-        let scheduler = IndexesLenTimeMinimizerScheduler::new(QueueScheduler::new());
+        let scheduler = IndexesLenTimeMinimizerScheduler::new(StdWeightedScheduler::new());
 
         let mut fuzzer = StdFuzzer::new(scheduler, feedback, objective);
 
