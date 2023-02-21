@@ -107,12 +107,12 @@ fn main() {
 
         let prog_path = args.path_to_binary.to_owned();
 
-        let fork_server = ForkserverExecutor::builder()
-            .program(prog_path)
-            .arg_input_file_std()
-            .coverage_map_size(MAP_SIZE)
-            .build(tuple_list!(edges_observer, time_observer))
-            .unwrap();
+    let fork_server = ForkserverExecutor::builder()
+        .program(prog_path)
+        .arg_input_file(args.output_dir.join(format!(".cur_input_{}",core_id)))
+        .coverage_map_size(MAP_SIZE)
+        .build(tuple_list!(edges_observer, time_observer))
+        .unwrap();
 
         let timeout = Duration::from_secs(1);
 
