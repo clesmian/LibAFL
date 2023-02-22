@@ -39,9 +39,9 @@ struct Arguments {
     cores: Cores,
     #[arg(short, long, default_value = "", value_name="PATH", help="Put '-' for stdout")]
     debug_logfile: String,
-    #[arg(short, long, default_value = "false")]
+    #[arg(short, long, default_value_t = false)]
     attach_to_running_broker: bool,
-    #[arg(short='C', long, default_value = "false", help="If enabled, the config is derived from the executable path, which enables all fuzzers of the broker running the same executable to share test cases in an easier fashion. Use unique config by default.")]
+    #[arg(short='C', long, default_value_t = false, help="If enabled, the config is derived from the executable path and its arguments, which enables all fuzzers of the broker running the same executable to share test cases in an easier fashion. Use unique config by default.")]
     config_from_name: bool,
 
 }
