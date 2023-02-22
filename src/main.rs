@@ -150,9 +150,9 @@ fn main() {
 
         let fork_server = fork_server_builder
             .debug_child(args.debug_child)
-        .coverage_map_size(MAP_SIZE)
-        .build(tuple_list!(edges_observer, time_observer))
-        .unwrap();
+            .coverage_map_size(MAP_SIZE)
+            .build(tuple_list!(edges_observer, time_observer))
+            .unwrap();
 
         let timeout = Duration::from_secs(1);
 
