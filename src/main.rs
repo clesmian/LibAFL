@@ -16,6 +16,7 @@ use libafl::prelude::EventConfig::AlwaysUnique;
 use libafl::prelude::tui::TuiMonitor;
 
 #[derive(Parser)]
+#[derive(Debug)]
 struct Arguments {
     #[arg(short, long, value_name = "PATH")]
     input_dir: PathBuf,
@@ -48,6 +49,22 @@ struct Arguments {
 
 fn main() {
     let args = Arguments::parse();
+    println!("{:#?}", args);
+
+    if !args.input_dir.is_dir() {
+        panic!("The value of input must be a directory")
+    } else {
+        match args.input_dir.read_dir() {
+            Ok(entries) => if entries.count() == 0 {
+                panic!("The input directory may not be empty")
+            },
+            Err(err) => panic!("{}", err)
+        }
+    }
+
+    if !args.path_to_binary.is_file() {
+        panic!("Could not find fuzz target at '{}'", args.path_to_binary.to_string_lossy())
+    }
     let input_dir = vec![args.input_dir];
 
     let mut run_client = |state: Option<_>, mut mgr, core_id| {
