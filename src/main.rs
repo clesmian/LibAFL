@@ -17,13 +17,16 @@ use libafl::prelude::tui::TuiMonitor;
 
 #[derive(Parser)]
 #[derive(Debug)]
+#[command(about="An AFL-like fuzzer with multi-core support")]
 struct Arguments {
     #[arg(short, long, value_name = "PATH")]
     input_dir: PathBuf,
     #[arg(short, long, value_name = "PATH")]
     output_dir: PathBuf,
-    #[arg(value_name = "EXE")]
+    #[arg(value_name = "EXE", allow_hyphen_values=true)]
     path_to_binary: PathBuf,
+    #[arg(value_name = "ARG", allow_hyphen_values=true, help="Arguments that are passed to the fuzz target. '@@' is replaced with the path to the current test case.")]
+    args: Option<Vec<String>>,
     #[arg(short = 'p', long, value_name = "PORT", default_value_t= 1337)]
     broker_port: u16,
     #[arg(short = 'Q', long, default_value_t= false)]
@@ -65,6 +68,11 @@ fn main() {
     if !args.path_to_binary.is_file() {
         panic!("Could not find fuzz target at '{}'", args.path_to_binary.to_string_lossy())
     }
+
+    if args.args == None || !args.args.clone().unwrap().contains(&String::from("@@")) {
+        println!("WARNING: It seems that the test case is never passed to the fuzz target. Are you sure you did not forget to include '@@' in the commandline?")
+    }
+
     let input_dir = vec![args.input_dir];
 
     let mut run_client = |state: Option<_>, mut mgr, core_id| {
@@ -124,9 +132,21 @@ fn main() {
 
         let prog_path = args.path_to_binary.to_owned();
 
-    let fork_server = ForkserverExecutor::builder()
-        .program(prog_path)
-        .arg_input_file(args.output_dir.join(format!(".cur_input_{}",core_id)))
+        let mut fork_server_builder = ForkserverExecutor::builder()
+            .program(prog_path);
+
+        if args.args != None {
+            for el in (args.args.clone()).unwrap() {
+                if el == "@@" {
+                    fork_server_builder = fork_server_builder
+                        .arg_input_file(args.output_dir.join(format!(".cur_input_{}",core_id)));
+                } else {
+                    fork_server_builder = fork_server_builder.arg(el);
+                }
+            }
+        }
+
+        let fork_server = fork_server_builder
         .coverage_map_size(MAP_SIZE)
         .build(tuple_list!(edges_observer, time_observer))
         .unwrap();
@@ -181,6 +201,13 @@ fn main() {
         TuiMonitor::new(String::from("My Monitor"), true)
     );
 
+    let mut config_string = String::from(args.path_to_binary.to_str().unwrap());
+    if args.args != None {
+        for el in args.args.clone().unwrap() {
+            config_string += &*el;
+        }
+    }
+
     match Launcher::builder()
         .shmem_provider(StdShMemProvider::new().
             expect("Failed to initialize shared memory for launcher"))
@@ -189,7 +216,7 @@ fn main() {
         // Let's them exchange every input without needing to rerun it
         .configuration(
             if args.config_from_name {
-                EventConfig::from_name(args.path_to_binary.to_str().unwrap())
+                EventConfig::from_name(&*config_string)
             } else {
                 AlwaysUnique
             })
