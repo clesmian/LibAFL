@@ -1,5 +1,5 @@
 [package]
-name = "exercise-1"
+name = "afl-fuzz-clone"
 version = "0.1.1"
 edition = "2021"
 
