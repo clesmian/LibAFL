@@ -164,7 +164,7 @@ fn main() {
             StdMutationalStage::new(mutator2)
         );
 
-        let scheduler = IndexesLenTimeMinimizerScheduler::new(StdWeightedScheduler::new());
+        let scheduler = IndexesLenTimeMinimizerScheduler::new(StdWeightedScheduler::new(&mut state));
 
         let mut fuzzer = StdFuzzer::new(scheduler, feedback, objective);
 
