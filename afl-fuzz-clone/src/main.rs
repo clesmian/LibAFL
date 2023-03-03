@@ -29,8 +29,6 @@ struct Arguments {
     args: Option<Vec<String>>,
     #[arg(short = 'p', long, value_name = "PORT", default_value_t= 1337)]
     broker_port: u16,
-    #[arg(short = 'Q', long, default_value_t= false)]
-    store_queue_to_disk: bool,
     #[arg(
     short,
     long,
