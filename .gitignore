@@ -1,2 +1,3 @@
 /target
-/xpdf/
+Cargo.lock
+.idea
