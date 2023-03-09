@@ -1,19 +1,77 @@
 use std::fs;
-use libafl::bolts::{current_nanos, AsMutSlice};
-use libafl::corpus::Corpus;
-use libafl::corpus::{OnDiskCorpus};
-use libafl::inputs::BytesInput;
-use libafl::prelude::{havoc_mutations, tuple_list, AflMapFeedback, ConstMapObserver, CrashFeedback, ForkserverExecutor, HasCorpus, HitcountsMapObserver, ShMem, ShMemProvider, SpliceMutator, StdRand, StdScheduledMutator, StdShMemProvider, TimeFeedback, TimeObserver, TimeoutFeedback, TimeoutForkserverExecutor, Launcher, Cores, InMemoryCorpus, OnDiskTOMLMonitor, EventConfig, MultiMonitor, StdWeightedScheduler};
-use libafl::schedulers::IndexesLenTimeMinimizerScheduler;
-use libafl::stages::StdMutationalStage;
-use libafl::state::StdState;
-use libafl::{feedback_and_fast, feedback_or, feedback_or_fast, Error, Fuzzer, StdFuzzer};
 use std::path::PathBuf;
 use std::time::Duration;
 
-use clap::{Parser};
-use libafl::prelude::EventConfig::AlwaysUnique;
-use libafl::prelude::tui::TuiMonitor;
+use clap::Parser;
+use libafl::{
+    bolts::{
+        AsMutSlice,
+        core_affinity::Cores,
+        current_nanos,
+        launcher::Launcher,
+        rands::StdRand,
+    },
+    corpus::{
+        Corpus,
+        OnDiskCorpus,
+    },
+    Error,
+    events::{
+        EventConfig,
+        EventConfig::AlwaysUnique
+    },
+    executors::{
+        ForkserverExecutor,
+        TimeoutForkserverExecutor,
+    },
+    feedback_and_fast,
+    feedback_or,
+    feedback_or_fast,
+    feedbacks::{
+        AflMapFeedback,
+        CrashFeedback,
+        TimeFeedback,
+        TimeoutFeedback,
+    },
+    Fuzzer,
+    fuzzer::StdFuzzer,
+    inputs::BytesInput,
+    monitors::{
+        OnDiskTOMLMonitor,
+        // Other monitors imported below according to used feature
+    },
+    observers::{
+        ConstMapObserver,
+        HitcountsMapObserver,
+        TimeObserver,
+    },
+    prelude::{
+        havoc_mutations,
+        ShMem,
+        ShMemProvider,
+        SpliceMutator,
+        StdScheduledMutator,
+        StdShMemProvider,
+        tuple_list,
+    },
+    schedulers::{
+        IndexesLenTimeMinimizerScheduler,
+        StdWeightedScheduler
+    },
+    stages::StdMutationalStage,
+    state::{
+        HasCorpus,
+        StdState,
+    },
+};
+
+#[cfg(feature = "keep-queue-in-memory")]
+use libafl::corpus::InMemoryCorpus;
+
+#[cfg(not(feature="tui"))]
+use libafl::monitors::MultiMonitor;
+#[cfg(feature="tui")]
+use libafl::monitors::tui::TuiMonitor;
 
 #[derive(Parser)]
 struct Arguments {
