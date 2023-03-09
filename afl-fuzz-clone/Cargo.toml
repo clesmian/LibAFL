@@ -3,8 +3,15 @@ name = "afl-fuzz-clone"
 version = "0.1.1"
 edition = "2021"
 
+[features]
+# Enables output to nicely formatted tui monitor (has some unsolved issues that lead to hangs)
+tui = ["libafl/tui_monitor"]
+# Enables introspection in libafl (most useful in conjunction with tui)
+introspection = ["libafl/introspection"]
+# Disables storing the queue to disk
+keep-queue-in-memory = []
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-libafl = {version = "0.9.0", features = ["introspection"]}
+libafl = {version = "0.9.0", features = []}
 clap = {version = "4.1.4", features = ["derive"] }

@@ -83,8 +83,6 @@ struct Arguments {
     path_to_binary: PathBuf,
     #[arg(short = 'p', long, value_name = "PORT", default_value_t= 1337)]
     broker_port: u16,
-    #[arg(short = 'Q', long, default_value_t= false)]
-    store_queue_to_disk: bool,
     #[arg(
     short,
     long,
@@ -142,17 +140,13 @@ fn main() {
         let solution_corpus =
             OnDiskCorpus::<BytesInput>::new(solutions_path).expect("Could not create crash corpus");
 
-        // TODO: implement switch
-        // if args.store_queue_to_disk{
-        //     let queue_corpus = OnDiskCorpus::new(args.output_dir.join(PathBuf::from("queue")))
-        //                 .expect("Could not create queue corpus");
-        // } else {
-        //     let queue_corpus = InMemoryCorpus::<BytesInput>::new();
-        // }
-
-        let queue_corpus = OnDiskCorpus::new(args.output_dir.join(format!("queue_{}", core_id)))
-                .expect("Could not create queue corpus");
-        // let queue_corpus = InMemoryCorpus::<BytesInput>::new();
+        // TODO: Implement commandline flag to be able to switch at runtime
+        #[cfg(not(feature = "keep-queue-in-memory"))]
+            let queue_corpus = OnDiskCorpus::new(
+                args.output_dir.join(format!("queue_{}", core_id))
+                ).expect("Could not create queue corpus");
+        #[cfg(feature = "keep-queue-in-memory")]
+            let queue_corpus = InMemoryCorpus::<BytesInput>::new();
 
         let mut state = state.unwrap_or_else(|| {StdState::new(
                 StdRand::with_seed(current_nanos()),
@@ -215,12 +209,20 @@ fn main() {
 
     let debug_log_path = args.output_dir.join(args.debug_logfile.clone()).to_str().unwrap().to_owned();
 
-    // Save stats to disk every 60 seconds
-    let stats = OnDiskTOMLMonitor::new(
+    // We have to do it like this because of an error in IntelliJ-Rust
+    // (https://github.com/intellij-rust/intellij-rust/issues/10222)
+    #[cfg(not(feature = "tui"))]
+        // Save stats to disk every 60 seconds
+        let stats = OnDiskTOMLMonitor::new(
         args.output_dir.join("stats.toml"),
-        // MultiMonitor::new(|s| println!("{}", s))
-        TuiMonitor::new(String::from("My Monitor"), true)
-    );
+        MultiMonitor::new(|s| println!("{}", s)),
+        );
+    #[cfg(feature = "tui")]
+        // Save stats to disk every 60 seconds
+        let stats = OnDiskTOMLMonitor::new(
+            args.output_dir.join("stats.toml"),
+            TuiMonitor::new(String::from("My Monitor"), true)
+        );
 
     match Launcher::builder()
         .shmem_provider(StdShMemProvider::new().
