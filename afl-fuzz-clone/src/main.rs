@@ -104,7 +104,6 @@ struct Arguments {
     attach_to_running_broker: bool,
     #[arg(short='C', long, default_value_t = false, help="If enabled, the config is derived from the executable path and its arguments, which enables all fuzzers of the broker running the same executable to share test cases in an easier fashion. Use unique config by default.")]
     config_from_name: bool,
-
 }
 
 
@@ -134,7 +133,7 @@ fn main() {
     let input_dir = vec![args.input_dir];
 
     let mut run_client = |state: Option<_>, mut mgr, core_id| {
-        const MAP_SIZE: usize = 65536;
+        const MAP_SIZE: usize = 1 << 17;
         let mut shmem_provider = StdShMemProvider::new().unwrap();
         let mut shmem = shmem_provider.new_shmem(MAP_SIZE).unwrap();
 
@@ -142,24 +141,33 @@ fn main() {
             .write_to_env("__AFL_SHM_ID")
             .expect("couldn't write shared memory id");
 
-        let mut shmem_as_slice = shmem.as_mut_slice();
+        let (shmem_edges, shmem_data) = shmem.as_mut_slice().split_at_mut(MAP_SIZE/2);
 
-        let edges_observer = HitcountsMapObserver::new(ConstMapObserver::<_, MAP_SIZE>::new(
+        let edges_cov_observer = HitcountsMapObserver::new(ConstMapObserver::<_, {MAP_SIZE/2}>::new(
             // Must be the same name for all fuzzing instances with the same configuration, otherwise the whole thing crashes
-            "shared_mem",
-            &mut shmem_as_slice,
+            "shared_mem_edges",
+            shmem_edges,
         ));
+        let data_cov_observer = ConstMapObserver::<_, {MAP_SIZE/2}>::new(
+            // Must be the same name for all fuzzing instances with the same configuration, otherwise the whole thing crashes
+            "shared_mem_data",
+            shmem_data,
+        );
 
         let time_observer = TimeObserver::new("time");
 
+        let edge_feedback = AflMapFeedback::new_tracking(&edges_cov_observer, true, false);
+        let data_feedback = AflMapFeedback::new_tracking(&data_cov_observer, true, false);
+
         let mut feedback = feedback_or!(
-            AflMapFeedback::new_tracking(&edges_observer, true, false),
+            edge_feedback,
+            data_feedback,
             TimeFeedback::with_observer(&time_observer)
         );
 
         let mut objective = feedback_or_fast!(
-          feedback_and_fast!(CrashFeedback::new(), AflMapFeedback::new(&edges_observer)),
-          feedback_and_fast!(TimeoutFeedback::new(), AflMapFeedback::new(&edges_observer))
+          feedback_and_fast!(CrashFeedback::new(), AflMapFeedback::new(&edges_cov_observer)),
+          feedback_and_fast!(TimeoutFeedback::new(), AflMapFeedback::new(&edges_cov_observer))
         );
 
         let solutions_path = args.output_dir.join(PathBuf::from("crashes"));
@@ -203,7 +211,7 @@ fn main() {
         let fork_server = fork_server_builder
             .debug_child(args.debug_child)
             .coverage_map_size(MAP_SIZE)
-            .build(tuple_list!(edges_observer, time_observer))
+            .build(tuple_list!(edges_cov_observer, data_cov_observer, time_observer))
             .unwrap();
 
         let timeout = Duration::from_secs(1);
