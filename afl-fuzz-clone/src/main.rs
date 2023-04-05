@@ -165,9 +165,8 @@ fn main() {
             TimeFeedback::with_observer(&time_observer)
         );
 
-        let mut objective = feedback_or_fast!(
-          feedback_and_fast!(CrashFeedback::new(), AflMapFeedback::new(&edges_cov_observer)),
-          feedback_and_fast!(TimeoutFeedback::new(), AflMapFeedback::new(&edges_cov_observer))
+        let mut objective = feedback_or!(
+           TimeFeedback::with_observer(&time_observer), CrashFeedback::new(), TimeoutFeedback::new()
         );
 
         let solutions_path = args.output_dir.join(PathBuf::from("crashes"));
