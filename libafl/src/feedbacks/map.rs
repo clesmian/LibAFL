@@ -446,6 +446,13 @@ where
             .unwrap();
 
         let history_map = map_state.history_map.as_mut_slice();
+
+        if history_map.len() < observer.as_iter().count() {
+            println!("WARNING: There are more values observed by \"{}\" than space available \
+            in the history map, won't append metadata", self.observer_name);
+            return Ok(())
+        }
+
         if self.indexes {
             let mut indices = Vec::new();
 
