@@ -40,7 +40,7 @@ use crate::{
     executors::ExitKind,
     inputs::UsesInput,
     observers::{ListObserver, ObserversTuple, TimeObserver},
-    state::HasClientPerfMonitor,
+    state::{HasClientPerfMonitor, HasMetadata},
     Error,
 };
 
@@ -784,13 +784,23 @@ impl Named for () {
     }
 }
 
+/// A testcase metadata holding the type of solution as a string
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SolutionType {
+    pub solution_type: String,
+}
+
+crate::impl_serdeany!(SolutionType);
+
 /// A [`CrashFeedback`] reports as interesting if the target crashed.
 #[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct CrashFeedback {}
+pub struct CrashFeedback {
+    is_crash: bool
+}
 
 impl<S> Feedback<S> for CrashFeedback
 where
-    S: UsesInput + HasClientPerfMonitor,
+    S: UsesInput + HasClientPerfMonitor + HasMetadata,
 {
     #[allow(clippy::wrong_self_convention)]
     fn is_interesting<EM, OT>(
@@ -806,10 +816,28 @@ where
         OT: ObserversTuple<S>,
     {
         if let ExitKind::Crash = exit_kind {
+            self.is_crash = true;
             Ok(true)
         } else {
+            self.is_crash = false;
             Ok(false)
         }
+    }
+
+    fn append_metadata<OT>(
+        &mut self,
+        _: &mut S,
+        _: &OT,
+        testcase: &mut Testcase<S::Input>,
+    ) -> Result<(), Error>
+        where
+            OT: ObserversTuple<S>,
+    {
+        if self.is_crash {
+            testcase.add_metadata(SolutionType{solution_type: "Crash".parse().unwrap() });
+        }
+
+        Ok(())
     }
 }
 
@@ -824,7 +852,7 @@ impl CrashFeedback {
     /// Creates a new [`CrashFeedback`]
     #[must_use]
     pub fn new() -> Self {
-        Self {}
+        Self {is_crash: false}
     }
 }
 
@@ -839,11 +867,13 @@ pub type CrashFeedbackFactory = DefaultFeedbackFactory<CrashFeedback>;
 
 /// A [`TimeoutFeedback`] reduces the timeout value of a run.
 #[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct TimeoutFeedback {}
+pub struct TimeoutFeedback {
+    is_timeout: bool
+}
 
 impl<S> Feedback<S> for TimeoutFeedback
 where
-    S: UsesInput + HasClientPerfMonitor,
+    S: UsesInput + HasClientPerfMonitor + HasMetadata,
 {
     #[allow(clippy::wrong_self_convention)]
     fn is_interesting<EM, OT>(
@@ -859,10 +889,28 @@ where
         OT: ObserversTuple<S>,
     {
         if let ExitKind::Timeout = exit_kind {
+            self.is_timeout = true;
             Ok(true)
         } else {
+            self.is_timeout = false;
             Ok(false)
         }
+    }
+
+    fn append_metadata<OT>(
+        &mut self,
+        _: &mut S,
+        _: &OT,
+        testcase: &mut Testcase<S::Input>,
+    ) -> Result<(), Error>
+        where
+            OT: ObserversTuple<S>,
+    {
+        if self.is_timeout {
+            testcase.add_metadata(SolutionType{solution_type: "Timeout".parse().unwrap() });
+        }
+
+        Ok(())
     }
 }
 
@@ -877,7 +925,7 @@ impl TimeoutFeedback {
     /// Returns a new [`TimeoutFeedback`].
     #[must_use]
     pub fn new() -> Self {
-        Self {}
+        Self {is_timeout: false}
     }
 }
 
