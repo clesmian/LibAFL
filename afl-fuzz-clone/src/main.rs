@@ -6,7 +6,10 @@ use clap::Parser;
 use libafl::{
     bolts::{
         AsMutSlice,
-        core_affinity::Cores,
+        core_affinity::{
+            Cores,
+            CoreId,
+        },
         current_nanos,
         launcher::Launcher,
         rands::StdRand,
@@ -65,7 +68,8 @@ use libafl::{
         StdState,
     },
 };
-
+#[cfg(not(feature = "keep-queue-in-memory"))]
+use libafl::corpus::InMemoryOnDiskCorpus;
 #[cfg(feature = "keep-queue-in-memory")]
 use libafl::corpus::InMemoryCorpus;
 
@@ -135,7 +139,7 @@ fn main() {
 
     let input_dir = vec![args.input_dir];
 
-    let mut run_client = |state: Option<_>, mut mgr, core_id| {
+    let mut run_client = |state: Option<_>, mut mgr, core_id: CoreId| {
         const MAP_SIZE: usize = 1 << 17;
         let mut shmem_provider = StdShMemProvider::new().unwrap();
         let mut shmem = shmem_provider.new_shmem(MAP_SIZE).unwrap();
@@ -159,8 +163,8 @@ fn main() {
 
         let time_observer = TimeObserver::new("time");
 
-        let edge_feedback = AflMapFeedback::new_tracking(&edges_cov_observer, true, false);
-        let data_feedback = AflMapFeedback::new_tracking(&data_cov_observer, true, false);
+        let edge_feedback = AflMapFeedback::tracking(&edges_cov_observer, true, false);
+        let data_feedback = AflMapFeedback::tracking(&data_cov_observer, true, false);
 
         let mut feedback = feedback_or!(
             edge_feedback,
@@ -179,7 +183,7 @@ fn main() {
 
         // TODO: Implement commandline flag to be able to switch at runtime
         #[cfg(not(feature = "keep-queue-in-memory"))]
-            let queue_corpus = OnDiskCorpus::new(
+            let queue_corpus = InMemoryOnDiskCorpus::new(
                 args.output_dir.join(format!("queue_{}", core_id))
                 ).expect("Could not create queue corpus");
         #[cfg(feature = "keep-queue-in-memory")]
@@ -203,12 +207,15 @@ fn main() {
             for el in (args.args.clone()).unwrap() {
                 if el == "@@" {
                     fork_server_builder = fork_server_builder
-                        .arg_input_file(args.output_dir.join(format!(".cur_input_{}",core_id)));
+                        .arg_input_file(args.output_dir.join(format!(".cur_input_{}",core_id.0)));
                 } else {
                     fork_server_builder = fork_server_builder.arg(el);
                 }
             }
         }
+
+        // TODO: Check the impact of the observer here, maybe we have to do something else
+        let scheduler = IndexesLenTimeMinimizerScheduler::new(StdWeightedScheduler::new(&mut state, &edges_cov_observer));
 
         let fork_server = fork_server_builder
             .debug_child(args.debug_child)
@@ -228,11 +235,10 @@ fn main() {
             StdMutationalStage::new(mutator2)
         );
 
-        let scheduler = IndexesLenTimeMinimizerScheduler::new(StdWeightedScheduler::new(&mut state));
 
         let mut fuzzer = StdFuzzer::new(scheduler, feedback, objective);
 
-        println!("We're a client on core {}, let's fuzz :)", core_id);
+        println!("We're a client on core {}, let's fuzz :)", core_id.0);
 
         if state.corpus().count() < 1 {
             state
