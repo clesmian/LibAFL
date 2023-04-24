@@ -72,12 +72,7 @@ where
         let num = self.iterations(state, base_corpus_idx)?;
 
         start_timer!(state);
-        let mut base = state
-            .corpus()
-            .get(base_corpus_idx)?
-            .borrow_mut()
-            .load_input()?
-            .clone();
+        let mut base = state.corpus().cloned_input_for_id(base_corpus_idx)?;
         let mut hasher = RandomState::with_seeds(0, 0, 0, 0).build_hasher();
         base.hash(&mut hasher);
         let base_hash = hasher.finish();
@@ -373,7 +368,7 @@ where
     M: MapObserver,
 {
     /// Creates a new map equality feedback for the given observer
-    pub fn new_from_observer(obs: &M) -> Self {
+    pub fn with_observer(obs: &M) -> Self {
         Self {
             obs_name: obs.name().to_string(),
             phantom: PhantomData,

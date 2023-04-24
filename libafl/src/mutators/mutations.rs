@@ -15,7 +15,7 @@ use crate::{
 
 /// Mem move in the own vec
 #[inline]
-pub fn buffer_self_copy<T>(data: &mut [T], from: usize, to: usize, len: usize) {
+pub(crate) unsafe fn buffer_self_copy<T>(data: &mut [T], from: usize, to: usize, len: usize) {
     debug_assert!(!data.is_empty());
     debug_assert!(from + len <= data.len());
     debug_assert!(to + len <= data.len());
@@ -29,7 +29,7 @@ pub fn buffer_self_copy<T>(data: &mut [T], from: usize, to: usize, len: usize) {
 
 /// Mem move between vecs
 #[inline]
-pub fn buffer_copy<T>(dst: &mut [T], src: &[T], from: usize, to: usize, len: usize) {
+pub(crate) unsafe fn buffer_copy<T>(dst: &mut [T], src: &[T], from: usize, to: usize, len: usize) {
     debug_assert!(!dst.is_empty());
     debug_assert!(!src.is_empty());
     debug_assert!(from + len <= src.len());
@@ -538,12 +538,14 @@ where
         let range = rand_range(state, size, min(16, max_size - size));
 
         input.bytes_mut().resize(size + range.len(), 0);
-        buffer_self_copy(
-            input.bytes_mut(),
-            range.start,
-            range.start + range.len(),
-            size - range.start,
-        );
+        unsafe {
+            buffer_self_copy(
+                input.bytes_mut(),
+                range.start,
+                range.start + range.len(),
+                size - range.start,
+            );
+        }
 
         Ok(MutationResult::Mutated)
     }
@@ -598,7 +600,9 @@ where
         let val = input.bytes()[state.rand_mut().below(size as u64) as usize];
 
         input.bytes_mut().resize(size + amount, 0);
-        buffer_self_copy(input.bytes_mut(), offset, offset + amount, size - offset);
+        unsafe {
+            buffer_self_copy(input.bytes_mut(), offset, offset + amount, size - offset);
+        }
         buffer_set(input.bytes_mut(), offset, amount, val);
 
         Ok(MutationResult::Mutated)
@@ -654,7 +658,9 @@ where
         let val = state.rand_mut().next() as u8;
 
         input.bytes_mut().resize(size + amount, 0);
-        buffer_self_copy(input.bytes_mut(), offset, offset + amount, size - offset);
+        unsafe {
+            buffer_self_copy(input.bytes_mut(), offset, offset + amount, size - offset);
+        }
         buffer_set(input.bytes_mut(), offset, amount, val);
 
         Ok(MutationResult::Mutated)
@@ -784,7 +790,9 @@ where
         let target = state.rand_mut().below(size as u64) as usize;
         let range = rand_range(state, size, size - target);
 
-        buffer_self_copy(input.bytes_mut(), range.start, target, range.len());
+        unsafe {
+            buffer_self_copy(input.bytes_mut(), range.start, target, range.len());
+        }
 
         Ok(MutationResult::Mutated)
     }
@@ -833,21 +841,23 @@ where
 
         input.bytes_mut().resize(size + range.len(), 0);
         self.tmp_buf.resize(range.len(), 0);
-        buffer_copy(
-            &mut self.tmp_buf,
-            input.bytes(),
-            range.start,
-            0,
-            range.len(),
-        );
+        unsafe {
+            buffer_copy(
+                &mut self.tmp_buf,
+                input.bytes(),
+                range.start,
+                0,
+                range.len(),
+            );
 
-        buffer_self_copy(
-            input.bytes_mut(),
-            target,
-            target + range.len(),
-            size - target,
-        );
-        buffer_copy(input.bytes_mut(), &self.tmp_buf, 0, target, range.len());
+            buffer_self_copy(
+                input.bytes_mut(),
+                target,
+                target + range.len(),
+                size - target,
+            );
+            buffer_copy(input.bytes_mut(), &self.tmp_buf, 0, target, range.len());
+        }
         Ok(MutationResult::Mutated)
     }
 }
@@ -895,79 +905,81 @@ where
 
             let second = rand_range(state, first.start, first.start);
             self.tmp_buf.resize(first.len(), 0);
-            // If range first is larger
-            if first.len() >= second.len() {
-                let diff_in_size = first.len() - second.len();
+            unsafe {
+                // If range first is larger
+                if first.len() >= second.len() {
+                    let diff_in_size = first.len() - second.len();
 
-                // copy first range to tmp
-                buffer_copy(
-                    &mut self.tmp_buf,
-                    input.bytes(),
-                    first.start,
-                    0,
-                    first.len(),
-                );
+                    // copy first range to tmp
+                    buffer_copy(
+                        &mut self.tmp_buf,
+                        input.bytes(),
+                        first.start,
+                        0,
+                        first.len(),
+                    );
 
-                // adjust second.end..first.start, move them by diff_in_size to the right
-                buffer_self_copy(
-                    input.bytes_mut(),
-                    second.end,
-                    second.end + diff_in_size,
-                    first.start - second.end,
-                );
+                    // adjust second.end..first.start, move them by diff_in_size to the right
+                    buffer_self_copy(
+                        input.bytes_mut(),
+                        second.end,
+                        second.end + diff_in_size,
+                        first.start - second.end,
+                    );
 
-                // copy second to where first was
-                buffer_self_copy(
-                    input.bytes_mut(),
-                    second.start,
-                    first.start + diff_in_size,
-                    second.len(),
-                );
+                    // copy second to where first was
+                    buffer_self_copy(
+                        input.bytes_mut(),
+                        second.start,
+                        first.start + diff_in_size,
+                        second.len(),
+                    );
 
-                // copy first back
-                buffer_copy(
-                    input.bytes_mut(),
-                    &self.tmp_buf,
-                    0,
-                    second.start,
-                    first.len(),
-                );
-            } else {
-                let diff_in_size = second.len() - first.len();
+                    // copy first back
+                    buffer_copy(
+                        input.bytes_mut(),
+                        &self.tmp_buf,
+                        0,
+                        second.start,
+                        first.len(),
+                    );
+                } else {
+                    let diff_in_size = second.len() - first.len();
 
-                // copy first range to tmp
-                buffer_copy(
-                    &mut self.tmp_buf,
-                    input.bytes(),
-                    first.start,
-                    0,
-                    first.len(),
-                );
+                    // copy first range to tmp
+                    buffer_copy(
+                        &mut self.tmp_buf,
+                        input.bytes(),
+                        first.start,
+                        0,
+                        first.len(),
+                    );
 
-                // adjust second.end..first.start, move them by diff_in_size to the left
-                buffer_self_copy(
-                    input.bytes_mut(),
-                    second.end,
-                    second.end - diff_in_size,
-                    first.start - second.end,
-                );
+                    // adjust second.end..first.start, move them by diff_in_size to the left
+                    buffer_self_copy(
+                        input.bytes_mut(),
+                        second.end,
+                        second.end - diff_in_size,
+                        first.start - second.end,
+                    );
 
-                // copy second to where first was
-                buffer_self_copy(
-                    input.bytes_mut(),
-                    second.start,
-                    first.start - diff_in_size,
-                    second.len(),
-                );
+                    // copy second to where first was
+                    buffer_self_copy(
+                        input.bytes_mut(),
+                        second.start,
+                        first.start - diff_in_size,
+                        second.len(),
+                    );
 
-                // copy first back
-                buffer_copy(
-                    input.bytes_mut(),
-                    &self.tmp_buf,
-                    0,
-                    second.start,
-                    first.len(),
-                );
+                    // copy first back
+                    buffer_copy(
+                        input.bytes_mut(),
+                        &self.tmp_buf,
+                        0,
+                        second.start,
+                        first.len(),
+                    );
+                }
             }
             Ok(MutationResult::Mutated)
         } else if first.end != size {
@@ -977,76 +989,78 @@ where
             second.end += first.end;
 
             self.tmp_buf.resize(second.len(), 0);
-            if second.len() >= first.len() {
-                let diff_in_size = second.len() - first.len();
-                // copy second range to tmp
-                buffer_copy(
-                    &mut self.tmp_buf,
-                    input.bytes(),
-                    second.start,
-                    0,
-                    second.len(),
-                );
+            unsafe {
+                if second.len() >= first.len() {
+                    let diff_in_size = second.len() - first.len();
+                    // copy second range to tmp
+                    buffer_copy(
+                        &mut self.tmp_buf,
+                        input.bytes(),
+                        second.start,
+                        0,
+                        second.len(),
+                    );
 
-                // adjust first.end..second.start, move them by diff_in_size to the right
-                buffer_self_copy(
-                    input.bytes_mut(),
-                    first.end,
-                    first.end + diff_in_size,
-                    second.start - first.end,
-                );
+                    // adjust first.end..second.start, move them by diff_in_size to the right
+                    buffer_self_copy(
+                        input.bytes_mut(),
+                        first.end,
+                        first.end + diff_in_size,
+                        second.start - first.end,
+                    );
 
-                // copy first to where second was
-                buffer_self_copy(
-                    input.bytes_mut(),
-                    first.start,
-                    second.start + diff_in_size,
-                    first.len(),
-                );
+                    // copy first to where second was
+                    buffer_self_copy(
+                        input.bytes_mut(),
+                        first.start,
+                        second.start + diff_in_size,
+                        first.len(),
+                    );
 
-                // copy second back
-                buffer_copy(
-                    input.bytes_mut(),
-                    &self.tmp_buf,
-                    0,
-                    first.start,
-                    second.len(),
-                );
-            } else {
-                let diff_in_size = first.len() - second.len();
-                // copy second range to tmp
-                buffer_copy(
-                    &mut self.tmp_buf,
-                    input.bytes(),
-                    second.start,
-                    0,
-                    second.len(),
-                );
+                    // copy second back
+                    buffer_copy(
+                        input.bytes_mut(),
+                        &self.tmp_buf,
+                        0,
+                        first.start,
+                        second.len(),
+                    );
+                } else {
+                    let diff_in_size = first.len() - second.len();
+                    // copy second range to tmp
+                    buffer_copy(
+                        &mut self.tmp_buf,
+                        input.bytes(),
+                        second.start,
+                        0,
+                        second.len(),
+                    );
 
-                // adjust first.end..second.start, move them by diff_in_size to the left
-                buffer_self_copy(
-                    input.bytes_mut(),
-                    first.end,
-                    first.end - diff_in_size,
-                    second.start - first.end,
-                );
+                    // adjust first.end..second.start, move them by diff_in_size to the left
+                    buffer_self_copy(
+                        input.bytes_mut(),
+                        first.end,
+                        first.end - diff_in_size,
+                        second.start - first.end,
+                    );
 
-                // copy first to where second was
-                buffer_self_copy(
-                    input.bytes_mut(),
-                    first.start,
-                    second.start - diff_in_size,
-                    first.len(),
-                );
+                    // copy first to where second was
+                    buffer_self_copy(
+                        input.bytes_mut(),
+                        first.start,
+                        second.start - diff_in_size,
+                        first.len(),
+                    );
 
-                // copy second back
-                buffer_copy(
-                    input.bytes_mut(),
-                    &self.tmp_buf,
-                    0,
-                    first.start,
-                    second.len(),
-                );
+                    // copy second back
+                    buffer_copy(
+                        input.bytes_mut(),
+                        &self.tmp_buf,
+                        0,
+                        first.start,
+                        second.len(),
+                    );
+                }
             }
 
             Ok(MutationResult::Mutated)
@@ -1100,13 +1114,11 @@ where
             }
         }
 
-        let other_size = state
-            .corpus()
-            .get(idx)?
-            .borrow_mut()
-            .load_input()?
-            .bytes()
-            .len();
+        let other_size = {
+            let mut other_testcase = state.corpus().get(idx)?.borrow_mut();
+            other_testcase.load_input(state.corpus())?.bytes().len()
+        };
+
         if other_size < 2 {
             return Ok(MutationResult::Skipped);
         }
@@ -1114,23 +1126,29 @@ where
         let range = rand_range(state, other_size, min(other_size, max_size - size));
         let target = state.rand_mut().below(size as u64) as usize;
 
-        let mut other_testcase = state.corpus().get(idx)?.borrow_mut();
-        let other = other_testcase.load_input()?;
-
         input.bytes_mut().resize(size + range.len(), 0);
-        buffer_self_copy(
-            input.bytes_mut(),
-            target,
-            target + range.len(),
-            size - target,
-        );
-        buffer_copy(
-            input.bytes_mut(),
-            other.bytes(),
-            range.start,
-            target,
-            range.len(),
-        );
+        unsafe {
+            buffer_self_copy(
+                input.bytes_mut(),
+                target,
+                target + range.len(),
+                size - target,
+            );
+        }
+
+        let other_testcase = state.corpus().get(idx)?.borrow_mut();
+        // No need to load the input again, it'll still be cached.
+        let other = other_testcase.input().as_ref().unwrap();
+
+        unsafe {
+            buffer_copy(
+                input.bytes_mut(),
+                other.bytes(),
+                range.start,
+                target,
+                range.len(),
+            );
+        }
         Ok(MutationResult::Mutated)
     }
 }
@@ -1177,13 +1195,11 @@ where
             }
         }
 
-        let other_size = state
-            .corpus()
-            .get(idx)?
-            .borrow_mut()
-            .load_input()?
-            .bytes()
-            .len();
+        let other_size = {
+            let mut testcase = state.corpus().get(idx)?.borrow_mut();
+            testcase.load_input(state.corpus())?.bytes().len()
+        };
+
         if other_size < 2 {
             return Ok(MutationResult::Skipped);
         }
@@ -1191,16 +1207,19 @@ where
         let target = state.rand_mut().below(size as u64) as usize;
         let range = rand_range(state, other_size, min(other_size, size - target));
 
-        let mut other_testcase = state.corpus().get(idx)?.borrow_mut();
-        let other = other_testcase.load_input()?;
+        let other_testcase = state.corpus().get(idx)?.borrow_mut();
+        // No need to load the input again, it'll still be cached.
+        let other = other_testcase.input().as_ref().unwrap();
 
-        buffer_copy(
-            input.bytes_mut(),
-            other.bytes(),
-            range.start,
-            target,
-            range.len(),
-        );
+        unsafe {
+            buffer_copy(
+                input.bytes_mut(),
+                other.bytes(),
+                range.start,
+                target,
+                range.len(),
+            );
+        }
         Ok(MutationResult::Mutated)
     }
 }
@@ -1261,7 +1280,7 @@ where
 
         let (first_diff, last_diff) = {
             let mut other_testcase = state.corpus().get(idx)?.borrow_mut();
-            let other = other_testcase.load_input()?;
+            let other = other_testcase.load_input(state.corpus())?;
 
             let mut counter: u32 = 0;
             loop {
@@ -1279,8 +1298,10 @@ where
 
         let split_at = state.rand_mut().between(first_diff, last_diff) as usize;
 
-        let mut other_testcase = state.corpus().get(idx)?.borrow_mut();
-        let other = other_testcase.load_input()?;
+        let other_testcase = state.corpus().get(idx)?.borrow_mut();
+        // Input will already be loaded.
+        let other = other_testcase.input().as_ref().unwrap();
+
         input
             .bytes_mut()
             .splice(split_at.., other.bytes()[split_at..].iter().copied());

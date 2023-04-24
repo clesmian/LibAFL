@@ -116,7 +116,7 @@ where
         let mut map = HashMap::new();
         for i in state.corpus().ids() {
             let mut old = state.corpus().get(i)?.borrow_mut();
-            let factor = F::compute(&mut *old, state)?;
+            let factor = F::compute(state, &mut *old)?;
             if let Some(old_map) = old.metadata_map_mut().get_mut::<M>() {
                 let mut e_iter = entries.iter();
                 let mut map_iter = old_map.as_slice().iter(); // ASSERTION: guaranteed to be in order?
@@ -140,6 +140,8 @@ where
                                         }
                                     })
                                     .or_insert((factor, i));
+                                entry = e_iter.next();
+                                map_entry = map_iter.next();
                             }
                             Ordering::Greater => {
                                 map_entry = map_iter.next();
@@ -151,9 +153,30 @@ where
                 }
             }
         }
-        if let Some(meta) = state.metadata_map_mut().get_mut::<TopRatedsMetadata>() {
-            meta.map
-                .extend(map.into_iter().map(|(entry, (_, idx))| (entry, idx)));
+        if let Some(mut meta) = state.metadata_map_mut().remove::<TopRatedsMetadata>() {
+            let map_iter = map.iter();
+
+            let reserve = if meta.map.is_empty() {
+                map_iter.size_hint().0
+            } else {
+                (map_iter.size_hint().0 + 1) / 2
+            };
+            meta.map.reserve(reserve);
+
+            for (entry, (_, new_idx)) in map_iter {
+                let mut new = state.corpus().get(*new_idx)?.borrow_mut();
+                let new_meta = new.metadata_map_mut().get_mut::<M>().ok_or_else(|| {
+                    Error::key_not_found(format!(
+                        "{} needed for MinimizerScheduler not found in testcase #{new_idx}",
+                        type_name::<M>()
+                    ))
+                })?;
+                *new_meta.refcnt_mut() += 1;
+                meta.map.insert(*entry, *new_idx);
+            }
+
+            // Put back the metadata
+            state.metadata_map_mut().insert_boxed(meta);
         }
         Ok(())
     }
@@ -233,7 +256,7 @@ where
         let mut new_favoreds = vec![];
         {
             let mut entry = state.corpus().get(idx)?.borrow_mut();
-            let factor = F::compute(&mut *entry, state)?;
+            let factor = F::compute(state, &mut *entry)?;
             let meta = entry.metadata_map_mut().get_mut::<M>().ok_or_else(|| {
                 Error::key_not_found(format!(
                     "Metadata needed for MinimizerScheduler not found in testcase #{idx}"
@@ -247,7 +270,7 @@ where
                         continue;
                     }
                     let mut old = state.corpus().get(*old_idx)?.borrow_mut();
-                    if factor > F::compute(&mut *old, state)? {
+                    if factor > F::compute(state, &mut *old)? {
                         continue;
                     }
 
