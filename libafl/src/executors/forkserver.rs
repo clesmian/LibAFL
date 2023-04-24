@@ -203,6 +203,7 @@ impl Forkserver {
         is_persistent: bool,
         is_deferred_frksrv: bool,
         debug_output: bool,
+        current_dir: Option<OsString>
     ) -> Result<Self, Error> {
         let mut st_pipe = Pipe::new().unwrap();
         let mut ctl_pipe = Pipe::new().unwrap();
@@ -221,6 +222,18 @@ impl Forkserver {
             .stdin(Stdio::null())
             .stdout(stdout)
             .stderr(stderr);
+
+        if current_dir.is_some() {
+            let current_dir = current_dir.unwrap().as_os_str().to_owned();
+            let path = Path::new(&current_dir);
+            if !path.is_absolute() || !path.exists() {
+                return Err(Error::illegal_state(
+                    "Current dir must exist and be specified as an absolute path.".to_string(),
+                ));
+            }
+
+            command.current_dir(path);
+        }
 
         // Persistent, deferred forkserver
         if is_persistent {
@@ -612,6 +625,7 @@ pub struct ForkserverExecutorBuilder<'a, SP> {
     shmem_provider: Option<&'a mut SP>,
     map_size: Option<usize>,
     real_map_size: i32,
+    current_dir: Option<OsString>
 }
 
 impl<'a, SP> ForkserverExecutorBuilder<'a, SP> {
@@ -736,6 +750,7 @@ impl<'a, SP> ForkserverExecutorBuilder<'a, SP> {
                 self.is_persistent,
                 self.is_deferred_frksrv,
                 self.debug_child,
+                self.current_dir.clone(),
             )?,
             None => {
                 return Err(Error::illegal_argument(
@@ -897,6 +912,19 @@ impl<'a, SP> ForkserverExecutorBuilder<'a, SP> {
         self
     }
 
+    /// The working directory of the target.
+    /// It must already exist and must be specified as an absolute path.
+    /// The program path must either be specified relative to it or via absolute path.
+    /// Useful for multifuzzer setups, where the targets of different instances
+    /// may otherwise run into conflicts with each other
+    pub fn current_dir<O>(mut self, current_dir: O) -> Self
+        where
+            O: AsRef<OsStr>,
+    {
+        self.current_dir = Some(current_dir.as_ref().to_owned());
+        self
+    }
+
     /// Adds an argument to the harness's commandline
     #[must_use]
     pub fn arg<O>(mut self, arg: O) -> Self
@@ -1029,6 +1057,7 @@ impl<'a> ForkserverExecutorBuilder<'a, UnixShMemProvider> {
             shmem_provider: None,
             map_size: None,
             real_map_size: 0,
+            current_dir: None,
         }
     }
 
@@ -1051,6 +1080,7 @@ impl<'a> ForkserverExecutorBuilder<'a, UnixShMemProvider> {
             shmem_provider: Some(shmem_provider),
             map_size: self.map_size,
             real_map_size: self.real_map_size,
+            current_dir: None,
         }
     }
 }
