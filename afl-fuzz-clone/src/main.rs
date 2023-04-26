@@ -109,8 +109,10 @@ struct Arguments {
     attach_to_running_broker: bool,
     #[arg(short='C', long, default_value_t = false, help="If enabled, the config is derived from the executable path and its arguments, which enables all fuzzers of the broker running the same executable to share test cases in an easier fashion. Use unique config by default.")]
     config_from_name: bool,
-    #[arg(long, default_value_t = false, help="If enabled, the fuzzer disregards any coverage generated from data.")]
+    #[arg(long, default_value_t = false, help="If enabled, the fuzzer disregards any coverage generated from data.", group = "coverage-selection")]
     disregard_data: bool,
+    #[arg(long, default_value_t = false, help="If enabled, the fuzzer disregards any coverage generated from control-flow.", group = "coverage-selection")]
+    disregard_edges: bool,
 }
 
 
@@ -167,7 +169,7 @@ fn main() {
         let data_feedback = AflMapFeedback::tracking(&data_cov_observer, true, false);
 
         let mut feedback = feedback_or!(
-            edge_feedback,
+            feedback_and_fast!(ConstFeedback::new(!args.disregard_edges), edge_feedback),
             feedback_and_fast!(ConstFeedback::new(!args.disregard_data), data_feedback),
             TimeFeedback::with_observer(&time_observer)
         );
