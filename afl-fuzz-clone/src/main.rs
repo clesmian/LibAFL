@@ -123,6 +123,8 @@ struct Arguments {
     disregard_data: bool,
     #[arg(long, default_value_t = false, help="If enabled, the fuzzer disregards any coverage generated from control-flow.", group = "coverage-selection")]
     disregard_edges: bool,
+    #[arg(long, requires = "coverage-selection", default_value_t = false, help="Do not evaluate coverage if we disregard it")]
+    fast_disregard: bool,
     #[arg(long, short, default_value_t = false, help="Creates a directory for each fuzzer instance to run its target in")]
     unique_working_dirs: bool,
     #[arg(short='D', long, value_name = "SIZE", default_value_t= 0x10000, value_parser=parse_maybe_hex)]
@@ -185,8 +187,10 @@ fn main() {
         let data_feedback = AflMapFeedback::tracking(&data_cov_observer, true, false);
 
         let mut feedback = feedback_or!(
-            feedback_and_fast!(ConstFeedback::new(!args.disregard_edges), edge_feedback),
-            feedback_and_fast!(ConstFeedback::new(!args.disregard_data), data_feedback),
+            feedback_and_fast!(ConstFeedback::new(!(args.disregard_edges && args.fast_disregard)),
+                feedback_and_fast!(edge_feedback, ConstFeedback::new(!args.disregard_edges))),
+            feedback_and_fast!(ConstFeedback::new(!(args.disregard_data && args.fast_disregard)),
+                feedback_and_fast!(data_feedback, ConstFeedback::new(!args.disregard_data))),
             TimeFeedback::with_observer(&time_observer)
         );
 
