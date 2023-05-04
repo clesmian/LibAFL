@@ -186,7 +186,7 @@ fn main() {
         // TODO: Implement commandline flag to be able to switch at runtime
         #[cfg(not(feature = "keep-queue-in-memory"))]
             let queue_corpus = InMemoryOnDiskCorpus::new(
-                args.output_dir.join(format!("queue_{}", core_id))
+                args.output_dir.join(format!("queue_{}", core_id.0))
                 ).expect("Could not create queue corpus");
         #[cfg(feature = "keep-queue-in-memory")]
             let queue_corpus = InMemoryCorpus::<BytesInput>::new();
