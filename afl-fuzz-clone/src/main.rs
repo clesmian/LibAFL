@@ -30,7 +30,6 @@ use libafl::{
     },
     feedback_and_fast,
     feedback_or,
-    feedback_or_fast,
     feedbacks::{
         AflMapFeedback,
         ConstFeedback,
