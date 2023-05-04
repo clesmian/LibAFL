@@ -113,6 +113,8 @@ struct Arguments {
     disregard_data: bool,
     #[arg(long, default_value_t = false, help="If enabled, the fuzzer disregards any coverage generated from control-flow.", group = "coverage-selection")]
     disregard_edges: bool,
+    #[arg(long, short, default_value_t = false, help="Creates a directory for each fuzzer instance to run its target in")]
+    unique_working_dirs: bool,
 }
 
 
@@ -200,10 +202,27 @@ fn main() {
             ).unwrap()}
             );
 
-        let prog_path = args.path_to_binary.to_owned();
+        let prog_path = args.path_to_binary.canonicalize().
+            expect("Error during canonicalization of program path").to_owned();
+        println!("Program located at: {:?}", prog_path.clone());
 
         let mut fork_server_builder = ForkserverExecutor::builder()
             .program(prog_path);
+
+        if args.unique_working_dirs{
+            let work_dir = args.output_dir.join(format!("fuzz_dir_{}",core_id.0));
+            if !work_dir.exists() {
+                println!("Creating work dir: {:?}", work_dir.clone());
+                fs::create_dir_all(work_dir.clone()).expect("Failed to create work_dir for executor");
+            }
+
+            fork_server_builder =
+                fork_server_builder.current_dir(work_dir.canonicalize().unwrap().as_os_str());
+
+        } else {
+            fork_server_builder =
+                fork_server_builder.current_dir(args.output_dir.canonicalize().unwrap().as_os_str());
+        }
 
         if args.args != None {
             for el in (args.args.clone()).unwrap() {
