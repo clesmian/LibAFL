@@ -1,4 +1,5 @@
 use std::fs;
+use std::num::ParseIntError;
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -48,6 +49,7 @@ use libafl::{
         ConstMapObserver,
         HitcountsMapObserver,
         TimeObserver,
+        StdMapObserver,
     },
     prelude::{
         havoc_mutations,
@@ -77,6 +79,14 @@ use libafl::corpus::InMemoryCorpus;
 use libafl::monitors::MultiMonitor;
 #[cfg(feature="tui")]
 use libafl::monitors::tui::TuiMonitor;
+
+fn parse_maybe_hex(s: &str) -> Result<usize, ParseIntError> {
+    if s.starts_with("0x") {
+        usize::from_str_radix(s.trim_start_matches("0x"), 16)
+    } else {
+        s.parse()
+    }
+}
 
 #[derive(Parser)]
 #[derive(Debug)]
@@ -115,6 +125,8 @@ struct Arguments {
     disregard_edges: bool,
     #[arg(long, short, default_value_t = false, help="Creates a directory for each fuzzer instance to run its target in")]
     unique_working_dirs: bool,
+    #[arg(short='D', long, value_name = "SIZE", default_value_t= 0x10000, value_parser=parse_maybe_hex)]
+    data_map_size: usize,
 }
 
 
@@ -143,23 +155,25 @@ fn main() {
 
     let input_dir = vec![args.input_dir];
 
-    let mut run_client = |state: Option<_>, mut mgr, core_id: CoreId| {
-        const MAP_SIZE: usize = 1 << 17;
+    let mut run_client = |state: Option<_>, mut mgr, core_id: CoreId| unsafe {
+        const CODE_MAP_SIZE: usize = 1 << 16;
+        const DEFAULT_DATA_MAP_SIZE: usize = 1<<16;
+        let map_size: usize = CODE_MAP_SIZE + args.data_map_size;
         let mut shmem_provider = StdShMemProvider::new().unwrap();
-        let mut shmem = shmem_provider.new_shmem(MAP_SIZE).unwrap();
+        let mut shmem = shmem_provider.new_shmem(map_size).unwrap();
 
         shmem
             .write_to_env("__AFL_SHM_ID")
             .expect("couldn't write shared memory id");
 
-        let (shmem_edges, shmem_data) = shmem.as_mut_slice().split_at_mut(MAP_SIZE/2);
+        let (shmem_edges, shmem_data) = shmem.as_mut_slice().split_at_mut(CODE_MAP_SIZE);
 
-        let edges_cov_observer = HitcountsMapObserver::new(ConstMapObserver::<_, {MAP_SIZE/2}>::new(
+        let edges_cov_observer = HitcountsMapObserver::new(ConstMapObserver::<_, CODE_MAP_SIZE>::new(
             // Must be the same name for all fuzzing instances with the same configuration, otherwise the whole thing crashes
             "shared_mem_edges",
             shmem_edges,
         ));
-        let data_cov_observer = ConstMapObserver::<_, {MAP_SIZE/2}>::new(
+        let data_cov_observer = StdMapObserver::<_, false>::new(
             // Must be the same name for all fuzzing instances with the same configuration, otherwise the whole thing crashes
             "shared_mem_data",
             shmem_data,
@@ -242,7 +256,7 @@ fn main() {
 
         let fork_server = fork_server_builder
             .debug_child(args.debug_child)
-            .coverage_map_size(MAP_SIZE)
+            .coverage_map_size(map_size)
             .build(tuple_list!(edges_cov_observer, data_cov_observer, time_observer))
             .unwrap();
 
