@@ -103,7 +103,7 @@ struct Arguments {
     cores: Cores,
     #[arg(short, long, default_value = "", value_name="PATH", help="Put '-' for stdout")]
     debug_logfile: String,
-    #[arg(long, default_value_t = false, help="Prints stdout/stderr of the fuzz target to stdout of the fuzzing instance. Is only useful in conjunction with -d/--debug_logfile")]
+    #[arg(long, requires = "debug_logfile", default_value_t = false, help="Prints stdout/stderr of the fuzz target to stdout of the fuzzing instance. Requires -d/--debug_logfile")]
     debug_child: bool,
     #[arg(short, long, default_value_t = false)]
     attach_to_running_broker: bool,
