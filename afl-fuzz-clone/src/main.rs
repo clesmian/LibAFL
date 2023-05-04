@@ -1,7 +1,10 @@
 use std::fs;
-use std::num::ParseIntError;
 use std::path::PathBuf;
 use std::time::Duration;
+use konst::{
+    primitive::parse_usize,
+    result::unwrap_ctx
+};
 
 use clap::Parser;
 use libafl::{
@@ -48,7 +51,6 @@ use libafl::{
         ConstMapObserver,
         HitcountsMapObserver,
         TimeObserver,
-        StdMapObserver,
     },
     prelude::{
         havoc_mutations,
@@ -79,6 +81,13 @@ use libafl::monitors::MultiMonitor;
 #[cfg(feature="tui")]
 use libafl::monitors::tui::TuiMonitor;
 
+
+#[cfg(feature="variable-data-map-size")]
+use libafl::observers::StdMapObserver;
+#[cfg(feature="variable-data-map-size")]
+use std::num::ParseIntError;
+
+#[cfg(feature="variable-data-map-size")]
 fn parse_maybe_hex(s: &str) -> Result<usize, ParseIntError> {
     if s.starts_with("0x") {
         usize::from_str_radix(s.trim_start_matches("0x"), 16)
@@ -126,7 +135,9 @@ struct Arguments {
     fast_disregard: bool,
     #[arg(long, short, default_value_t = false, help="Creates a directory for each fuzzer instance to run its target in")]
     unique_working_dirs: bool,
-    #[arg(short='D', long, value_name = "SIZE", default_value_t= 0x10000, value_parser=parse_maybe_hex)]
+
+    #[cfg(feature="variable-data-map-size")]
+    #[arg(short='D', long, value_name = "SIZE", default_value_t=0x10000, value_parser=parse_maybe_hex)]
     data_map_size: usize,
 }
 
@@ -158,8 +169,13 @@ fn main() {
 
     let mut run_client = |state: Option<_>, mut mgr, core_id: CoreId| unsafe {
         const CODE_MAP_SIZE: usize = 1 << 16;
-        const DEFAULT_DATA_MAP_SIZE: usize = 1<<16;
-        let map_size: usize = CODE_MAP_SIZE + args.data_map_size;
+        const DEFAULT_DATA_MAP_SIZE: usize = unwrap_ctx!(parse_usize(env!("DATA_MAP_SIZE"))); // 1<<17 = 131072
+
+        #[cfg(not(feature="variable-data-map-size"))]
+            let map_size: usize = CODE_MAP_SIZE + DEFAULT_DATA_MAP_SIZE;
+        #[cfg(feature="variable-data-map-size")]
+            let map_size: usize = CODE_MAP_SIZE + args.data_map_size;
+
         let mut shmem_provider = StdShMemProvider::new().unwrap();
         let mut shmem = shmem_provider.new_shmem(map_size).unwrap();
 
@@ -174,11 +190,19 @@ fn main() {
             "shared_mem_edges",
             shmem_edges,
         ));
-        let data_cov_observer = StdMapObserver::<_, false>::new(
-            // Must be the same name for all fuzzing instances with the same configuration, otherwise the whole thing crashes
-            "shared_mem_data",
-            shmem_data,
-        );
+
+        #[cfg(feature="variable-data-map-size")]
+            let data_cov_observer = StdMapObserver::<_, false>::new(
+                // Must be the same name for all fuzzing instances with the same configuration, otherwise the whole thing crashes
+                "shared_mem_data",
+                shmem_data,
+            );
+        #[cfg(not(feature="variable-data-map-size"))]
+            let data_cov_observer = ConstMapObserver::<_, DEFAULT_DATA_MAP_SIZE>::new(
+                // Must be the same name for all fuzzing instances with the same configuration, otherwise the whole thing crashes
+                "shared_mem_data",
+                shmem_data,
+            );
 
         let time_observer = TimeObserver::new("time");
 

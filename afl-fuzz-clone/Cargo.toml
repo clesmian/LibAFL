@@ -4,6 +4,7 @@ version = "0.1.1"
 edition = "2021"
 
 [features]
+variable-data-map-size = []
 # Enables output to nicely formatted tui monitor (has some unsolved issues that lead to hangs)
 tui = ["libafl/tui_monitor"]
 # Enables introspection in libafl (most useful in conjunction with tui)
@@ -15,3 +16,4 @@ keep-queue-in-memory = []
 [dependencies]
 libafl = {path="../../LibAFL/libafl", features = []}
 clap = {version = "4.1.4", features = ["derive"] }
+konst = {version = "0.3.5", features = ["parsing"]}
