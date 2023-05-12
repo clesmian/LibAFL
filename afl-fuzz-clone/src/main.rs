@@ -273,7 +273,7 @@ fn main() {
             for el in (args.args.clone()).unwrap() {
                 if el == "@@" {
                     fork_server_builder = fork_server_builder
-                        .arg_input_file(args.output_dir.join(format!(".cur_input_{}",core_id.0)));
+                        .arg_input_file(args.output_dir.canonicalize().unwrap().join(format!(".cur_input_{}",core_id.0)));
                 } else if el.contains("@@") {
                     fork_server_builder = fork_server_builder.arg(el.replace("@@", format!(".cur_input_{}",core_id.0).as_str()));
                 } else {
