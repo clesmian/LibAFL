@@ -384,7 +384,7 @@ where
     O: MapObserver<Entry = T> + for<'it> AsIter<'it, Item = T>,
     R: Reducer<T> + Debug,
     S: UsesInput + HasClientPerfMonitor + HasNamedMetadata + Debug,
-    T: Default + Copy + Serialize + for<'de> Deserialize<'de> + PartialEq + Debug + 'static,
+    T: Default + Copy + Serialize + for<'de> Deserialize<'de> + PartialEq + Debug + 'static + PrimInt,
 {
     fn init_state(&mut self, state: &mut S) -> Result<(), Error> {
         // Initialize `MapFeedbackMetadata` with an empty vector and add it to the state.
@@ -650,7 +650,7 @@ fn create_stats_name(name: &str) -> String {
 
 impl<N, O, R, S, T> MapFeedback<N, O, R, S, T>
 where
-    T: PartialEq + Default + Copy + 'static + Serialize + DeserializeOwned + Debug,
+    T: PartialEq + Default + Copy + 'static + Serialize + DeserializeOwned + Debug + PrimInt,
     R: Reducer<T>,
     O: MapObserver<Entry = T>,
     for<'it> O: AsIter<'it, Item = T>,
@@ -805,8 +805,12 @@ where
         }
 
         if interesting || self.always_track {
-            let len = history_map.len();
-            let filled = history_map.iter().filter(|&&i| i != initial).count();
+            let len = history_map.len()*8;
+            let mut bitcount : u64 = 0;
+            // let filled = history_map.iter().filter(|&&i| i != initial).count();
+            for &el in history_map{
+                bitcount += el.count_ones() as u64;
+            }
             // opt: if not tracking optimisations, we technically don't show the *current* history
             // map but the *last* history map; this is better than walking over and allocating
             // unnecessarily
@@ -815,10 +819,7 @@ where
                 Event::UpdateUserStats {
                     name: self.stats_name.to_string(),
                     value: UserStats::Ratio(
-                        self.novelties
-                            .as_ref()
-                            .map_or(filled, |novelties| filled + novelties.len())
-                            as u64,
+                        bitcount,
                         len as u64,
                     ),
                     phantom: PhantomData,
