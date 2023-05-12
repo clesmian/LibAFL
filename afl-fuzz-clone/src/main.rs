@@ -79,7 +79,10 @@ use libafl::corpus::InMemoryCorpus;
 #[cfg(not(feature="tui"))]
 use libafl::monitors::MultiMonitor;
 #[cfg(feature="tui")]
-use libafl::monitors::tui::TuiMonitor;
+use libafl::monitors::tui::{
+    ui::TuiUI,
+    TuiMonitor,
+};
 
 
 #[cfg(feature="variable-data-map-size")]
@@ -341,7 +344,7 @@ fn main() {
         // Save stats to disk every 60 seconds
         let stats = OnDiskTOMLMonitor::new(
             args.output_dir.join("stats.toml"),
-            TuiMonitor::new(String::from("My Monitor"), true)
+            TuiMonitor::new(TuiUI::new(String::from("My Monitor"), true))
         );
 
     let mut config_string = String::from(args.path_to_binary.to_str().unwrap());
