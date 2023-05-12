@@ -787,6 +787,7 @@ impl Named for () {
 /// A testcase metadata holding the type of solution as a string
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SolutionType {
+    /// solution_type may for example be 'Crash' or 'Timeout'
     pub solution_type: String,
 }
 
