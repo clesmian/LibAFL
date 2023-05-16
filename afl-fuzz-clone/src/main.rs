@@ -1,8 +1,11 @@
+use std::cell::RefCell;
 use std::fs;
+use std::fs::OpenOptions;
 #[cfg(feature = "variable-data-map-size")]
 use std::num::ParseIntError;
 use std::path::PathBuf;
 use std::time::Duration;
+use std::io::Write;
 
 use clap::Parser;
 use konst::{
@@ -67,6 +70,7 @@ use libafl::{
         StdState,
     },
 };
+use libafl::bolts::current_time;
 #[cfg(feature = "keep-queue-in-memory")]
 use libafl::corpus::InMemoryCorpus;
 #[cfg(not(feature = "keep-queue-in-memory"))]
@@ -156,7 +160,13 @@ fn main() {
         }
     }
 
-    let debug_log_path = args.output_dir.join(args.debug_logfile.clone()).to_str().unwrap().to_owned();
+    let log =
+        if !args.debug_logfile.is_empty() {
+            let debug_log_path = args.output_dir.join(args.debug_logfile.clone()).to_str().unwrap().to_owned();
+            Some(RefCell::new(OpenOptions::new().append(true).create(true).open(debug_log_path).expect("Failed to open log file")))
+        } else {
+            None
+        };
 
     // We have to do it like this because of an error in IntelliJ-Rust
     // (https://github.com/intellij-rust/intellij-rust/issues/10222)
@@ -164,7 +174,14 @@ fn main() {
         // Save stats to disk every 60 seconds
         let stats = OnDiskTOMLMonitor::new(
         args.output_dir.join("stats.toml"),
-        SimpleMonitor::new(|s| println!("{}", s)),
+        SimpleMonitor::new(
+            |s| {
+                println!("{}", s);
+                if log.is_some() {
+                    writeln!(log.as_ref().unwrap().borrow_mut(), "{:?} {}", current_time(), s).unwrap();
+                }
+            }
+        ),
     );
     #[cfg(feature = "tui")]
         // Save stats to disk every 60 seconds
