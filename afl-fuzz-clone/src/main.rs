@@ -1,11 +1,9 @@
 use std::cell::RefCell;
 use std::fs;
 use std::fs::OpenOptions;
-#[cfg(feature = "variable-data-map-size")]
-use std::num::ParseIntError;
+use std::io::Write;
 use std::path::PathBuf;
 use std::time::Duration;
-use std::io::Write;
 
 use clap::Parser;
 use konst::{
@@ -82,19 +80,7 @@ use libafl::monitors::tui::{
     TuiMonitor,
     ui::TuiUI,
 };
-#[cfg(feature = "variable-data-map-size")]
-use libafl::observers::StdMapObserver;
-use libafl::prelude::{Merge};
-use libafl::stages::{CalibrationStage};
 
-#[cfg(feature = "variable-data-map-size")]
-fn parse_maybe_hex(s: &str) -> Result<usize, ParseIntError> {
-    if s.starts_with("0x") {
-        usize::from_str_radix(s.trim_start_matches("0x"), 16)
-    } else {
-        s.parse()
-    }
-}
 
 #[derive(Parser)]
 #[derive(Debug)]
@@ -122,9 +108,6 @@ struct Arguments {
     timeout: u64,
     #[arg(long,short='T', default_value_t = false, help = "Consider timeouts to be solutions")]
     timeouts_are_solutions: bool,
-    #[cfg(feature = "variable-data-map-size")]
-    #[arg(short = 'D', long, value_name = "SIZE", default_value_t = 0x10000, value_parser = parse_maybe_hex)]
-    data_map_size: usize,
 }
 
 
@@ -198,10 +181,8 @@ fn main() {
     const CODE_MAP_SIZE: usize = 1 << 16;
     const DEFAULT_DATA_MAP_SIZE: usize = unwrap_ctx!(parse_usize(unwrap_or!(option_env!("DATA_MAP_SIZE"), "131072"))); // 1<<17 = 131072
 
-    #[cfg(not(feature = "variable-data-map-size"))]
-        let map_size: usize = CODE_MAP_SIZE + DEFAULT_DATA_MAP_SIZE;
-    #[cfg(feature = "variable-data-map-size")]
-        let map_size: usize = CODE_MAP_SIZE + args.data_map_size;
+
+    let map_size: usize = CODE_MAP_SIZE + DEFAULT_DATA_MAP_SIZE;
 
     let mut shmem_provider = StdShMemProvider::new().unwrap();
     let mut shmem = shmem_provider.new_shmem(map_size).unwrap();
@@ -220,16 +201,7 @@ fn main() {
         shmem_edges,
     ));
 
-    #[cfg(feature = "variable-data-map-size")]
-        let data_cov_observer = unsafe {
-        StdMapObserver::<_, false>::new(
-            // Must be the same name for all fuzzing instances with the same configuration, otherwise the whole thing crashes
-            "shared_mem_data",
-            shmem_data,
-        )
-    };
-    #[cfg(not(feature = "variable-data-map-size"))]
-        let data_cov_observer = ConstMapObserver::<_, DEFAULT_DATA_MAP_SIZE>::new(
+    let data_cov_observer = ConstMapObserver::<_, DEFAULT_DATA_MAP_SIZE>::new(
         // Must be the same name for all fuzzing instances with the same configuration, otherwise the whole thing crashes
         "shared_mem_data",
         shmem_data,
