@@ -200,7 +200,13 @@ fn main() {
 
     let (shmem_edges, shmem_data) = shmem.as_mut_slice().split_at_mut(CODE_MAP_SIZE);
 
-    let edges_cov_observer = HitcountsMapObserver::new(ConstMapObserver::<_, CODE_MAP_SIZE>::new(
+    let combined_observer = unsafe {
+        ConstMapObserver::<_, { CODE_MAP_SIZE + DEFAULT_DATA_MAP_SIZE }>
+            ::from_mut_ptr("two_as_one", shmem_edges.as_mut_ptr().clone())
+    };
+
+    let edges_cov_observer =
+        HitcountsMapObserver::new(ConstMapObserver::<_, CODE_MAP_SIZE>::new(
         // Must be the same name for all fuzzing instances with the same configuration, otherwise the whole thing crashes
         "shared_mem_edges",
         shmem_edges,
@@ -237,8 +243,11 @@ fn main() {
     // TODO: Consider StdMOptMutator
     let mutator = StdScheduledMutator::new(havoc_mutations().merge(tuple_list!(SpliceMutator::new())));
 
+    let combined_feedback = AflMapFeedback::tracking(&combined_observer, true, false);
+    let calibration = CalibrationStage::new(&combined_feedback);
+
     let mut stages = tuple_list!(
-        CalibrationStage::new(&data_feedback),
+        calibration,
         StdMutationalStage::new(mutator)
         );
 
@@ -265,11 +274,18 @@ fn main() {
         &mut objective,
     ).unwrap();
 
+    // Ensure that combined_feedback is present in the metadata map of the state
+    state.add_named_metadata(
+        // Doesn't really matter as it is overwritten anyways
+        MapFeedbackMetadata::<u8>::new(0),
+        &*combined_feedback.name().to_string(),
+    );
+
     // TODO: Check the impact of the observer here, maybe we have to do something else
     let scheduler = IndexesLenTimeMinimizerScheduler::new(
         StdWeightedScheduler::new(
             &mut state,
-            &data_cov_observer
+            &combined_observer,
         )
     );
 
@@ -294,7 +310,7 @@ fn main() {
     let fork_server = fork_server_builder
         .debug_child(args.debug_child)
         .coverage_map_size(map_size)
-        .build(tuple_list!(data_cov_observer, edges_cov_observer, time_observer))
+        .build(tuple_list!(edges_cov_observer, data_cov_observer, time_observer, combined_observer))
         .unwrap();
 
     let timeout = Duration::from_millis(args.timeout);
