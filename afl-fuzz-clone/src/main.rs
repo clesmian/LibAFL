@@ -15,15 +15,14 @@ use libafl::{
     bolts::{
         AsMutSlice,
         current_nanos,
+        current_time,
         rands::StdRand,
     },
     corpus::{
         Corpus,
         OnDiskCorpus,
     },
-    events::{
-        SimpleEventManager
-    },
+    events::SimpleEventManager,
     executors::{
         ForkserverExecutor,
         TimeoutForkserverExecutor,
@@ -34,6 +33,7 @@ use libafl::{
         AflMapFeedback,
         ConstFeedback,
         CrashFeedback,
+        MapFeedbackMetadata,
         TimeFeedback,
         TimeoutFeedback,
     },
@@ -57,18 +57,23 @@ use libafl::{
         StdScheduledMutator,
         StdShMemProvider,
         tuple_list,
+        Merge,
+        Named,
     },
     schedulers::{
         IndexesLenTimeMinimizerScheduler,
         StdWeightedScheduler,
     },
-    stages::StdMutationalStage,
+    stages::{
+        StdMutationalStage,
+        CalibrationStage,
+    },
     state::{
         HasCorpus,
+        HasNamedMetadata,
         StdState,
     },
 };
-use libafl::bolts::current_time;
 #[cfg(feature = "keep-queue-in-memory")]
 use libafl::corpus::InMemoryCorpus;
 #[cfg(not(feature = "keep-queue-in-memory"))]
