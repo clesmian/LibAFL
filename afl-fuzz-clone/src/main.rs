@@ -171,7 +171,7 @@ fn main() {
 
     let input_dir = vec![args.input_dir];
 
-    let mut run_client = |state: Option<_>, mut mgr, core_id: CoreId| unsafe {
+    let mut run_client = |state: Option<_>, mut mgr, core_id: CoreId| {
         const CODE_MAP_SIZE: usize = 1 << 16;
         const DEFAULT_DATA_MAP_SIZE: usize = unwrap_ctx!(parse_usize(unwrap_or!(option_env!("DATA_MAP_SIZE"), "131072"))); // 1<<17 = 131072
 
@@ -196,11 +196,13 @@ fn main() {
         ));
 
         #[cfg(feature="variable-data-map-size")]
-            let data_cov_observer = StdMapObserver::<_, false>::new(
-                // Must be the same name for all fuzzing instances with the same configuration, otherwise the whole thing crashes
-                "shared_mem_data",
-                shmem_data,
-            );
+            let data_cov_observer = unsafe {
+                StdMapObserver::<_, false>::new(
+                    // Must be the same name for all fuzzing instances with the same configuration, otherwise the whole thing crashes
+                    "shared_mem_data",
+                    shmem_data,
+                )
+            };
         #[cfg(not(feature="variable-data-map-size"))]
             let data_cov_observer = ConstMapObserver::<_, DEFAULT_DATA_MAP_SIZE>::new(
                 // Must be the same name for all fuzzing instances with the same configuration, otherwise the whole thing crashes
