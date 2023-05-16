@@ -140,6 +140,10 @@ struct Arguments {
     fast_disregard: bool,
     #[arg(long, short, default_value_t = false, help="Creates a directory for each fuzzer instance to run its target in")]
     unique_working_dirs: bool,
+    #[arg(long, short, default_value_t = 1000, help = "Timeout value in milliseconds")]
+    timeout: u64,
+    #[arg(long,short='T', default_value_t = false, help = "Consider timeouts to be solutions")]
+    timeouts_are_solutions: bool,
 
     #[cfg(feature="variable-data-map-size")]
     #[arg(short='D', long, value_name = "SIZE", default_value_t=0x10000, value_parser=parse_maybe_hex)]
@@ -238,7 +242,9 @@ fn main() {
         );
 
         let mut objective = feedback_or!(
-           TimeFeedback::with_observer(&time_observer), CrashFeedback::new(), TimeoutFeedback::new()
+            TimeFeedback::with_observer(&time_observer),
+            CrashFeedback::new(),
+            feedback_and_fast!(ConstFeedback::new(args.timeouts_are_solutions), TimeoutFeedback::new())
         );
 
         let solutions_path = args.output_dir.join(PathBuf::from("crashes"));
@@ -309,7 +315,7 @@ fn main() {
             .build(tuple_list!(edges_cov_observer, data_cov_observer, time_observer))
             .unwrap();
 
-        let timeout = Duration::from_secs(1);
+        let timeout = Duration::from_millis(args.timeout);
 
         let mut executor = TimeoutForkserverExecutor::new(fork_server, timeout).unwrap();
 
