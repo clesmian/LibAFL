@@ -234,22 +234,6 @@ fn main() {
         expect("Error during canonicalization of program path").to_owned();
     println!("Program located at: {:?}", prog_path.clone());
 
-    let mut fork_server_builder = ForkserverExecutor::builder()
-        .program(prog_path);
-
-    if args.args != None {
-        for el in (args.args.clone()).unwrap() {
-            if el == "@@" {
-                fork_server_builder = fork_server_builder
-                    .arg_input_file(args.output_dir.canonicalize().unwrap().join(".cur_input"));
-            } else if el.contains("@@") {
-                fork_server_builder = fork_server_builder.arg(el.replace("@@", ".cur_input"));
-            } else {
-                fork_server_builder = fork_server_builder.arg(el);
-            }
-        }
-    }
-
     // TODO: Consider StdMOptMutator
     let mutator = StdScheduledMutator::new(havoc_mutations().merge(tuple_list!(SpliceMutator::new())));
 
@@ -288,6 +272,23 @@ fn main() {
             &data_cov_observer
         )
     );
+
+
+    let mut fork_server_builder = ForkserverExecutor::builder()
+        .program(prog_path);
+
+    if args.args != None {
+        for el in (args.args.clone()).unwrap() {
+            if el == "@@" {
+                fork_server_builder = fork_server_builder
+                    .arg_input_file(args.output_dir.canonicalize().unwrap().join(".cur_input"));
+            } else if el.contains("@@") {
+                fork_server_builder = fork_server_builder.arg(el.replace("@@", ".cur_input"));
+            } else {
+                fork_server_builder = fork_server_builder.arg(el);
+            }
+        }
+    }
 
     // TODO: Consider is_persistent and build_dynamic_map
     let fork_server = fork_server_builder
