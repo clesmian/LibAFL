@@ -89,7 +89,7 @@ use libafl::monitors::tui::{
 
 #[derive(Parser)]
 #[derive(Debug)]
-#[command(about = "An AFL-like fuzzer with multi-core support")]
+#[command(about = "An AFL-like fuzzer built for fuzzbench")]
 struct Arguments {
     #[arg(short, long, value_name = "PATH")]
     input_dir: PathBuf,
@@ -111,7 +111,7 @@ struct Arguments {
     fast_disregard: bool,
     #[arg(long, short, default_value_t = 1000, help = "Timeout value in milliseconds")]
     timeout: u64,
-    #[arg(long,short='T', default_value_t = false, help = "Consider timeouts to be solutions")]
+    #[arg(long, short = 'T', default_value_t = false, help = "Consider timeouts to be solutions")]
     timeouts_are_solutions: bool,
 }
 
@@ -195,7 +195,7 @@ fn main() {
     shmem
         .write_to_env("__AFL_SHM_ID")
         .expect("couldn't write shared memory id");
-    // To let know the AFL++ binary that we have a big map
+    // To let the AFL++ binary know that we have a big map
     std::env::set_var("AFL_MAP_SIZE", format!("{}", map_size));
 
     let (shmem_edges, shmem_data) = shmem.as_mut_slice().split_at_mut(CODE_MAP_SIZE);
