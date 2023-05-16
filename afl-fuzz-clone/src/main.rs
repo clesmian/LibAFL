@@ -115,7 +115,7 @@ struct Arguments {
     #[arg(long, requires = "coverage-selection", default_value_t = false, help = "Do not evaluate coverage if we disregard it")]
     fast_disregard: bool,
     #[arg(long, short, default_value_t = 1000, help = "Timeout value in milliseconds")]
-    timeout: u32,
+    timeout: u64,
     #[cfg(feature = "variable-data-map-size")]
     #[arg(short = 'D', long, value_name = "SIZE", default_value_t = 0x10000, value_parser = parse_maybe_hex)]
     data_map_size: usize,
@@ -298,7 +298,7 @@ fn main() {
         .build(tuple_list!(data_cov_observer, edges_cov_observer, time_observer))
         .unwrap();
 
-    let timeout = Duration::from_secs(1);
+    let timeout = Duration::from_millis(args.timeout);
 
     let mut executor = TimeoutForkserverExecutor::new(fork_server, timeout).unwrap();
 
