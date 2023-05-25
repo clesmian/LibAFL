@@ -33,7 +33,6 @@ use libafl::{
         AflMapFeedback,
         ConstFeedback,
         CrashFeedback,
-        MapFeedbackMetadata,
         TimeFeedback,
         TimeoutFeedback,
     },
@@ -58,7 +57,6 @@ use libafl::{
         StdShMemProvider,
         tuple_list,
         Merge,
-        Named,
     },
     schedulers::{
         IndexesLenTimeMinimizerScheduler,
@@ -70,7 +68,6 @@ use libafl::{
     },
     state::{
         HasCorpus,
-        HasNamedMetadata,
         StdState,
     },
 };
@@ -85,6 +82,15 @@ use libafl::monitors::tui::{
     TuiMonitor,
     ui::TuiUI,
 };
+#[cfg(not(any(feature = "data-cov-only", feature = "edge-cov-only")))]
+use libafl::{
+    prelude::Named,
+    feedbacks::MapFeedbackMetadata,
+    state::HasNamedMetadata,
+};
+
+#[cfg(all(feature = "data-cov-only", feature = "edge-cov-only"))]
+compile_error!("Cannot use features data-cov-only and edge-cov-only together");
 
 
 #[derive(Parser)]
@@ -103,9 +109,9 @@ struct Arguments {
     debug_logfile: String,
     #[arg(long, requires = "debug_logfile", default_value_t = false, help = "Prints stdout/stderr of the fuzz target to stdout of the fuzzing instance. Requires -d/--debug_logfile")]
     debug_child: bool,
-    #[arg(long, default_value_t = false, help = "If enabled, the fuzzer disregards any coverage generated from data.", group = "coverage-selection")]
+    #[arg(long, default_value_t = cfg!(feature = "edge-cov-only"), help = "If enabled, the fuzzer disregards any coverage generated from data.", group = "coverage-selection")]
     disregard_data: bool,
-    #[arg(long, default_value_t = false, help = "If enabled, the fuzzer disregards any coverage generated from control-flow.", group = "coverage-selection")]
+    #[arg(long, default_value_t = cfg!(feature = "data-cov-only"), help = "If enabled, the fuzzer disregards any coverage generated from control-flow.", group = "coverage-selection")]
     disregard_edges: bool,
     #[arg(long, requires = "coverage-selection", default_value_t = false, help = "Do not evaluate coverage if we disregard it")]
     fast_disregard: bool,
@@ -203,12 +209,13 @@ fn main() {
 
     let (shmem_edges, shmem_data) = shmem.as_mut_slice().split_at_mut(CODE_MAP_SIZE);
 
-    let combined_observer = unsafe {
+    #[cfg(not(any(feature = "data-cov-only", feature = "edge-cov-only")))]
+    let calibration_observer = unsafe {
         ConstMapObserver::<_, { CODE_MAP_SIZE + DEFAULT_DATA_MAP_SIZE }>
             ::from_mut_ptr("two_as_one", shmem_edges.as_mut_ptr().clone())
     };
 
-    let edges_cov_observer =
+    let edge_cov_observer =
         HitcountsMapObserver::new(ConstMapObserver::<_, CODE_MAP_SIZE>::new(
         // Must be the same name for all fuzzing instances with the same configuration, otherwise the whole thing crashes
         "shared_mem_edges",
@@ -223,7 +230,7 @@ fn main() {
 
     let time_observer = TimeObserver::new("time");
 
-    let edge_feedback = AflMapFeedback::tracking(&edges_cov_observer, true, false);
+    let edge_feedback = AflMapFeedback::tracking(&edge_cov_observer, true, false);
     let data_feedback = AflMapFeedback::tracking(&data_cov_observer, true, false);
 
     let solutions_path = args.output_dir.join(PathBuf::from("crashes"));
@@ -248,11 +255,20 @@ fn main() {
     // TODO: Consider StdMOptMutator
     let mutator = StdScheduledMutator::new(havoc_mutations().merge(tuple_list!(SpliceMutator::new())));
 
-    let combined_feedback = AflMapFeedback::tracking(&combined_observer, true, false);
-    let calibration = CalibrationStage::new(&combined_feedback);
+
+    #[cfg(not(any(feature = "data-cov-only", feature = "edge-cov-only")))]
+    let calibration_feedback = AflMapFeedback::tracking(&calibration_observer, true, false);
+    #[cfg(not(any(feature = "data-cov-only", feature = "edge-cov-only")))]
+    let calibration_stage = CalibrationStage::new(&calibration_feedback);
+    
+    #[cfg(feature = "data-cov-only")]
+    let calibration_stage = CalibrationStage::new(&data_feedback);
+    #[cfg(feature = "edge-cov-only")]
+    let calibration_stage = CalibrationStage::new(&edge_feedback);
+    
 
     let mut stages = tuple_list!(
-        calibration,
+        calibration_stage,
         StdMutationalStage::new(mutator)
         );
 
@@ -279,18 +295,24 @@ fn main() {
         &mut objective,
     ).unwrap();
 
+    #[cfg(not(any(feature = "data-cov-only", feature = "edge-cov-only")))]
     // Ensure that combined_feedback is present in the metadata map of the state
     state.add_named_metadata(
         // Doesn't really matter as it is overwritten anyways
         MapFeedbackMetadata::<u8>::new(0),
-        &*combined_feedback.name().to_string(),
+            &*calibration_feedback.name().to_string(),
     );
 
     // TODO: Check the impact of the observer here, maybe we have to do something else
     let scheduler = IndexesLenTimeMinimizerScheduler::new(
         StdWeightedScheduler::new(
             &mut state,
-            &combined_observer,
+            #[cfg(not(any(feature = "data-cov-only", feature = "edge-cov-only")))]
+                &calibration_observer,
+            #[cfg(feature = "data-cov-only")]
+                &data_cov_observer,
+            #[cfg(feature = "edge-cov-only")]
+                &edge_cov_observer,
         )
     );
 
@@ -310,12 +332,17 @@ fn main() {
             }
         }
     }
+    #[cfg(not(any(feature = "data-cov-only", feature = "edge-cov-only")))]
+    let observers = tuple_list!(edge_cov_observer, data_cov_observer, time_observer, calibration_observer);
+    #[cfg(any(feature = "data-cov-only", feature = "edge-cov-only"))]
+    let observers = tuple_list!(edge_cov_observer, data_cov_observer, time_observer);
+
 
     // TODO: Consider is_persistent and build_dynamic_map
     let fork_server = fork_server_builder
         .debug_child(args.debug_child)
         .coverage_map_size(map_size)
-        .build(tuple_list!(edges_cov_observer, data_cov_observer, time_observer, combined_observer))
+        .build(observers)
         .unwrap();
 
     let timeout = Duration::from_millis(args.timeout);

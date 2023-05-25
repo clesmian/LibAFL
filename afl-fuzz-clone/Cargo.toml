@@ -11,6 +11,10 @@ tui = ["libafl/tui_monitor"]
 introspection = ["libafl/introspection"]
 # Disables storing the queue to disk
 keep-queue-in-memory = []
+# Only evaluate data coverage
+data-cov-only = []
+# Only evaluate edge coverage
+edge-cov-only = []
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
