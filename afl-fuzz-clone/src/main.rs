@@ -76,7 +76,7 @@ use libafl::corpus::InMemoryCorpus;
 #[cfg(not(feature = "keep-queue-in-memory"))]
 use libafl::corpus::InMemoryOnDiskCorpus;
 #[cfg(not(feature = "tui"))]
-use libafl::monitors::multi::MultiMonitor;
+use libafl::monitors::SimpleMonitor;
 #[cfg(feature = "tui")]
 use libafl::monitors::tui::{
     TuiMonitor,
@@ -122,6 +122,8 @@ struct Arguments {
     #[cfg(not(feature = "keep-queue-in-memory"))]
     #[arg(long, short = 'm', default_value_t = false, help = "Store metadate of queue entries on disk")]
     store_queue_metadata: bool,
+    #[arg(long, default_value_t = false, help = "Output every log entry instead of only statys messages every few seconds")]
+    fast_log_output: bool,
 }
 
 
@@ -170,16 +172,22 @@ fn main() {
     // We have to do it like this because of an error in IntelliJ-Rust
     // (https://github.com/intellij-rust/intellij-rust/issues/10222)
     #[cfg(not(feature = "tui"))]
+
+        let mut last_log_event = current_time() - Duration::from_secs(30);
         // Save stats to disk every 60 seconds
         let stats = OnDiskTOMLMonitor::new(
         args.output_dir.join("stats.toml"),
-        MultiMonitor::new(
+        SimpleMonitor::with_user_monitor(
             |s| {
-                println!("{}", s);
-                if log.is_some() {
-                    writeln!(log.as_ref().unwrap().borrow_mut(), "{:?} {}", current_time(), s).unwrap();
+                if args.fast_log_output || last_log_event + Duration::from_secs(20) < current_time() {
+                    last_log_event = current_time();
+                    println!("{}", s);
+                    if log.is_some() {
+                        writeln!(log.as_ref().unwrap().borrow_mut(), "{:?} {}", current_time(), s).unwrap();
+                    }
                 }
-            }
+            },
+            true
         ),
     );
     #[cfg(feature = "tui")]
@@ -296,12 +304,12 @@ fn main() {
     ).unwrap();
 
     #[cfg(not(any(feature = "data-cov-only", feature = "edge-cov-only")))]
-    // Ensure that combined_feedback is present in the metadata map of the state
-    state.add_named_metadata(
-        // Doesn't really matter as it is overwritten anyways
-        MapFeedbackMetadata::<u8>::new(0),
+        // Ensure that combined_feedback is present in the metadata map of the state
+        state.add_named_metadata(
+            // Doesn't really matter as it is overwritten anyways
+            MapFeedbackMetadata::<u8>::new(0),
             &*calibration_feedback.name().to_string(),
-    );
+        );
 
     // TODO: Check the impact of the observer here, maybe we have to do something else
     let scheduler = IndexesLenTimeMinimizerScheduler::new(
