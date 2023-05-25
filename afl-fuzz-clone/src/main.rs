@@ -79,7 +79,7 @@ use libafl::corpus::InMemoryCorpus;
 #[cfg(not(feature = "keep-queue-in-memory"))]
 use libafl::corpus::InMemoryOnDiskCorpus;
 #[cfg(not(feature = "tui"))]
-use libafl::monitors::SimpleMonitor;
+use libafl::monitors::multi::MultiMonitor;
 #[cfg(feature = "tui")]
 use libafl::monitors::tui::{
     TuiMonitor,
@@ -164,7 +164,7 @@ fn main() {
         // Save stats to disk every 60 seconds
         let stats = OnDiskTOMLMonitor::new(
         args.output_dir.join("stats.toml"),
-        SimpleMonitor::new(
+        MultiMonitor::new(
             |s| {
                 println!("{}", s);
                 if log.is_some() {
