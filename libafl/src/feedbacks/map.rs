@@ -368,6 +368,8 @@ pub struct MapFeedback<N, O, R, S, T> {
     stats_name: String,
     /// Phantom Data of Reducer
     phantom: PhantomData<(N, O, R, S, T)>,
+    /// For displaying info, is the map regarded as a bit or byte-map (default)
+    is_bitmap: bool,
 }
 
 impl<N, O, R, S, T> UsesObserver<S> for MapFeedback<N, O, R, S, T>
@@ -668,6 +670,7 @@ where
             stats_name: create_stats_name(map_observer.name()),
             always_track: false,
             phantom: PhantomData,
+            is_bitmap: false,
         }
     }
 
@@ -682,6 +685,7 @@ where
             stats_name: create_stats_name(map_observer.name()),
             always_track: false,
             phantom: PhantomData,
+            is_bitmap: false,
         }
     }
 
@@ -696,6 +700,7 @@ where
             stats_name: create_stats_name(name),
             phantom: PhantomData,
             always_track: false,
+            is_bitmap: false,
         }
     }
 
@@ -704,6 +709,12 @@ where
     /// This is useful in combination with `load_initial_inputs_forced`, or other feedbacks.
     pub fn set_always_track(&mut self, always_track: bool) {
         self.always_track = always_track;
+    }
+
+    /// For reporting, enable `bitmap` mode, which reports the number of bits set in the map,
+    /// rather than the number of entries set.
+    pub fn set_is_bitmap(&mut self, is_bitmap: bool) {
+        self.is_bitmap = is_bitmap;
     }
 
     /// Creating a new `MapFeedback` with a specific name. This is usefully whenever the same
@@ -719,6 +730,7 @@ where
             stats_name: create_stats_name(name),
             always_track: false,
             phantom: PhantomData,
+            is_bitmap: false,
         }
     }
 
@@ -738,6 +750,7 @@ where
             name: name.to_string(),
             always_track: false,
             phantom: PhantomData,
+            is_bitmap: false,
         }
     }
 
@@ -805,11 +818,18 @@ where
         }
 
         if interesting || self.always_track {
-            let len = history_map.len()*8;
-            let mut bitcount : u64 = 0;
-            // let filled = history_map.iter().filter(|&&i| i != initial).count();
-            for &el in history_map{
-                bitcount += el.count_ones() as u64;
+            let mut filled: u64 = 0;
+            let len: usize;
+            if self.is_bitmap {
+                // Assumes one entry is 8 bits (e.g. underlying structure is a byte-map)
+                len = history_map.len() * 8;
+                for &el in history_map {
+                    filled += el.count_ones() as u64;
+                }
+            } else {
+                len = history_map.len();
+                let filled_bytes = history_map.iter().filter(|&&i| i != initial).count();
+                filled = self.novelties.as_ref().map_or(filled_bytes,|novelties| filled_bytes + novelties.len()) as u64;
             }
             // opt: if not tracking optimisations, we technically don't show the *current* history
             // map but the *last* history map; this is better than walking over and allocating
@@ -819,7 +839,7 @@ where
                 Event::UpdateUserStats {
                     name: self.stats_name.to_string(),
                     value: UserStats::Ratio(
-                        bitcount,
+                        filled ,
                         len as u64,
                     ),
                     phantom: PhantomData,
