@@ -144,7 +144,9 @@ struct Arguments {
     timeout: u64,
     #[arg(long,short='T', default_value_t = false, help = "Consider timeouts to be solutions")]
     timeouts_are_solutions: bool,
-
+    #[cfg(not(feature = "keep-queue-in-memory"))]
+    #[arg(long, short = 'm', default_value_t = false, help = "Store metadate of queue entries on disk")]
+    store_queue_metadata: bool,
     #[cfg(feature="variable-data-map-size")]
     #[arg(short='D', long, value_name = "SIZE", default_value_t=0x10000, value_parser=parse_maybe_hex)]
     data_map_size: usize,
@@ -254,9 +256,16 @@ fn main() {
 
         // TODO: Implement commandline flag to be able to switch at runtime
         #[cfg(not(feature = "keep-queue-in-memory"))]
-            let queue_corpus = InMemoryOnDiskCorpus::new(
-                args.output_dir.join(format!("queue_{}", core_id.0))
-                ).expect("Could not create queue corpus");
+            let queue_corpus = if args.store_queue_metadata {
+                InMemoryOnDiskCorpus::new(
+                    args.output_dir.join(format!("queue_{}", core_id.0))
+                ).expect("Could not create queue corpus")
+            } else {
+                InMemoryOnDiskCorpus::no_meta(
+                    args.output_dir.join(format!("queue_{}", core_id.0))
+                ).expect("Could not create queue corpus")
+            };
+
         #[cfg(feature = "keep-queue-in-memory")]
             let queue_corpus = InMemoryCorpus::<BytesInput>::new();
 
