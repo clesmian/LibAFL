@@ -1,3 +1,4 @@
+use std::env::var;
 use std::fs;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -150,6 +151,19 @@ fn main() {
     let args = Arguments::parse();
     println!("{:#?}", args);
 
+    let default_asan_options =
+        "abort_on_error=1:\
+        detect_leaks=0:\
+        malloc_context_size=0:\
+        symbolize=0:\
+        allocator_may_return_null=1".to_string();
+
+    let asan_options = match var("ASAN_OPTIONS")  {
+        Ok(options) => {format!("{}:{}", default_asan_options, options)}
+        Err(_) => { default_asan_options }
+    };
+    println!("Setting ASAN_OPTIONS to: '{}'", &asan_options);
+
     if !args.input_dir.is_dir() {
         panic!("The value of input must be a directory")
     } else {
@@ -270,6 +284,8 @@ fn main() {
             fork_server_builder =
                 fork_server_builder.current_dir(args.output_dir.canonicalize().unwrap().as_os_str());
         }
+        
+        fork_server_builder = fork_server_builder.env("ASAN_OPTIONS", &asan_options);
 
         if args.args != None {
             for el in (args.args.clone()).unwrap() {
