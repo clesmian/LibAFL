@@ -145,7 +145,7 @@ struct Arguments {
     #[arg(long,short='T', default_value_t = false, help = "Consider timeouts to be solutions")]
     timeouts_are_solutions: bool,
     #[cfg(not(feature = "keep-queue-in-memory"))]
-    #[arg(long, short = 'm', default_value_t = false, help = "Store metadate of queue entries on disk")]
+    #[arg(long, short = 'm', default_value_t = false, help = "Store metadata of queue entries on disk")]
     store_queue_metadata: bool,
     #[cfg(feature="variable-data-map-size")]
     #[arg(short='D', long, value_name = "SIZE", default_value_t=0x10000, value_parser=parse_maybe_hex)]
