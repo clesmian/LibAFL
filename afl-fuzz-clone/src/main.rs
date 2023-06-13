@@ -62,6 +62,7 @@ use libafl::{
         StdScheduledMutator,
         StdShMemProvider,
         tuple_list,
+        Merge
     },
     schedulers::{
         IndexesLenTimeMinimizerScheduler,
@@ -86,11 +87,21 @@ use libafl::monitors::tui::{
     TuiMonitor,
 };
 
+#[cfg(not(any(feature = "data-cov-only", feature = "edge-cov-only")))]
+use libafl::{
+    prelude::Named,
+    feedbacks::MapFeedbackMetadata,
+    state::HasNamedMetadata,
+};
+
+#[cfg(all(feature = "data-cov-only", feature = "edge-cov-only"))]
+compile_error!("Cannot use features data-cov-only and edge-cov-only together");
 
 #[cfg(feature="variable-data-map-size")]
 use libafl::observers::StdMapObserver;
 #[cfg(feature="variable-data-map-size")]
 use std::num::ParseIntError;
+use libafl::stages::CalibrationStage;
 
 #[cfg(feature="variable-data-map-size")]
 fn parse_maybe_hex(s: &str) -> Result<usize, ParseIntError> {
@@ -101,9 +112,17 @@ fn parse_maybe_hex(s: &str) -> Result<usize, ParseIntError> {
     }
 }
 
+#[cfg(feature = "data-cov-only")]
+const ABOUT: & str = "AFL-like fuzzer (DATA only)";
+#[cfg(feature = "edge-cov-only")]
+const ABOUT: & str = "AFL-like fuzzer (EDGES only)";
+#[cfg(not(any(feature = "edge-cov-only", feature = "data-cov-only")))]
+const ABOUT: & str = "An AFL-like fuzzer with multi-core support";
+
+
 #[derive(Parser)]
 #[derive(Debug)]
-#[command(about="An AFL-like fuzzer with multi-core support")]
+#[command(about=ABOUT)]
 struct Arguments {
     #[arg(short, long, value_name = "PATH")]
     input_dir: PathBuf,
@@ -132,9 +151,9 @@ struct Arguments {
     attach_to_running_broker: bool,
     #[arg(short='C', long, default_value_t = false, help="If enabled, the config is derived from the executable path and its arguments, which enables all fuzzers of the broker running the same executable to share test cases in an easier fashion. Use unique config by default.")]
     config_from_name: bool,
-    #[arg(long, default_value_t = false, help="If enabled, the fuzzer disregards any coverage generated from data.", group = "coverage-selection")]
+    #[arg(long, default_value_t = cfg!(feature = "edge-cov-only"), help = "If enabled, the fuzzer disregards any coverage generated from data.", group = "coverage-selection")]
     disregard_data: bool,
-    #[arg(long, default_value_t = false, help="If enabled, the fuzzer disregards any coverage generated from control-flow.", group = "coverage-selection")]
+    #[arg(long, default_value_t = cfg!(feature = "data-cov-only"), help = "If enabled, the fuzzer disregards any coverage generated from control-flow.", group = "coverage-selection")]
     disregard_edges: bool,
     #[arg(long, requires = "coverage-selection", default_value_t = false, help="Do not evaluate coverage if we disregard it")]
     fast_disregard: bool,
@@ -155,7 +174,21 @@ struct Arguments {
 
 fn main() {
     let args = Arguments::parse();
+    println!("{}", ABOUT);
     println!("{:#?}", args);
+
+    #[cfg(feature = "data-cov-only")]
+    if args.disregard_data {
+        panic!("You cannot use the flag --disregard-data with this built, as it is configured \
+        to evaluate data coverage only")
+    }
+
+
+    #[cfg(feature = "edge-cov-only")]
+    if args.disregard_edges {
+        panic!("You cannot use the flag --disregard-edges with this built, as it is configured \
+        to evaluate edge coverage only")
+    }
 
     let default_asan_options =
         "abort_on_error=1:\
@@ -209,11 +242,18 @@ fn main() {
 
         let (shmem_edges, shmem_data) = shmem.as_mut_slice().split_at_mut(CODE_MAP_SIZE);
 
-        let edges_cov_observer = HitcountsMapObserver::new(ConstMapObserver::<_, CODE_MAP_SIZE>::new(
-            // Must be the same name for all fuzzing instances with the same configuration, otherwise the whole thing crashes
-            "shared_mem_edges",
-            shmem_edges,
-        ));
+    #[cfg(not(any(feature = "data-cov-only", feature = "edge-cov-only")))]
+    let calibration_observer = unsafe {
+        ConstMapObserver::<_, { CODE_MAP_SIZE + DEFAULT_DATA_MAP_SIZE }>
+            ::from_mut_ptr("two_as_one", shmem_edges.as_mut_ptr().clone())
+    };
+
+    let edge_cov_observer =
+        HitcountsMapObserver::new(ConstMapObserver::<_, CODE_MAP_SIZE>::new(
+        // Must be the same name for all fuzzing instances with the same configuration, otherwise the whole thing crashes
+        "shared_mem_edges",
+        shmem_edges,
+    ));
 
         #[cfg(feature="variable-data-map-size")]
             let data_cov_observer = unsafe {
@@ -232,9 +272,19 @@ fn main() {
 
         let time_observer = TimeObserver::new("time");
 
-        let edge_feedback = AflMapFeedback::tracking(&edges_cov_observer, true, false);
+        let edge_feedback = AflMapFeedback::tracking(&edge_cov_observer, true, false);
         let mut data_feedback = AflMapFeedback::tracking(&data_cov_observer, true, false);
         data_feedback.set_is_bitmap(true);
+
+        #[cfg(not(any(feature = "data-cov-only", feature = "edge-cov-only")))]
+            let calibration_feedback = AflMapFeedback::tracking(&calibration_observer, true, false);
+        #[cfg(not(any(feature = "data-cov-only", feature = "edge-cov-only")))]
+            let calibration_stage = CalibrationStage::new(&calibration_feedback);
+
+        #[cfg(feature = "data-cov-only")]
+            let calibration_stage = CalibrationStage::new(&data_feedback);
+        #[cfg(feature = "edge-cov-only")]
+            let calibration_stage = CalibrationStage::new(&edge_feedback);
 
         let mut feedback = feedback_or!(
             feedback_and_fast!(ConstFeedback::new(!(args.disregard_edges && args.fast_disregard)),
@@ -279,6 +329,14 @@ fn main() {
             ).unwrap()}
             );
 
+        #[cfg(not(any(feature = "data-cov-only", feature = "edge-cov-only")))]
+        // Ensure that combined_feedback is present in the metadata map of the state
+        state.add_named_metadata(
+            // Doesn't really matter as it is overwritten anyways
+            MapFeedbackMetadata::<u8>::new(0),
+            &*calibration_feedback.name().to_string(),
+        );
+
         let prog_path = args.path_to_binary.canonicalize().
             expect("Error during canonicalization of program path").to_owned();
         println!("Program located at: {:?}", prog_path.clone());
@@ -316,27 +374,42 @@ fn main() {
             }
         }
 
-        // TODO: Check the impact of the observer here, maybe we have to do something else
-        let scheduler = IndexesLenTimeMinimizerScheduler::new(StdWeightedScheduler::new(&mut state, &edges_cov_observer));
+        let scheduler = IndexesLenTimeMinimizerScheduler::new(
+            StdWeightedScheduler::new(
+                &mut state,
+                #[cfg(not(any(feature = "data-cov-only", feature = "edge-cov-only")))]
+                    &calibration_observer,
+                #[cfg(feature = "data-cov-only")]
+                    &data_cov_observer,
+                #[cfg(feature = "edge-cov-only")]
+                    &edge_cov_observer,
+            )
+        );
+
+        #[cfg(not(any(feature = "data-cov-only", feature = "edge-cov-only")))]
+            let observers = tuple_list!(edge_cov_observer, data_cov_observer, time_observer, calibration_observer);
+        #[cfg(any(feature = "data-cov-only", feature = "edge-cov-only"))]
+            let observers = tuple_list!(edge_cov_observer, data_cov_observer, time_observer);
+
 
         let fork_server = fork_server_builder
             .debug_child(args.debug_child)
             .coverage_map_size(map_size)
-            .build(tuple_list!(edges_cov_observer, data_cov_observer, time_observer))
+            .build(observers)
             .unwrap();
 
         let timeout = Duration::from_millis(args.timeout);
 
         let mut executor = TimeoutForkserverExecutor::new(fork_server, timeout).unwrap();
 
-        let mutator1 = StdScheduledMutator::new(havoc_mutations());
-        // TODO: Evaluate whether it makes sense to include two stages
-        let mutator2 = StdScheduledMutator::new(tuple_list!(SpliceMutator::new()));
-        let mut stages = tuple_list!(
-            StdMutationalStage::new(mutator1),
-            StdMutationalStage::new(mutator2)
+        let mutator = StdScheduledMutator::new(
+            havoc_mutations().merge(tuple_list!(SpliceMutator::new()))
         );
 
+        let mut stages = tuple_list!(
+            calibration_stage,
+            StdMutationalStage::new(mutator)
+        );
 
         let mut fuzzer = StdFuzzer::new(scheduler, feedback, objective);
 
