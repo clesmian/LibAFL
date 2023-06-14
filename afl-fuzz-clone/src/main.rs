@@ -169,6 +169,8 @@ struct Arguments {
     #[cfg(feature="variable-data-map-size")]
     #[arg(short='D', long, value_name = "SIZE", default_value_t=0x10000, value_parser=parse_maybe_hex)]
     data_map_size: usize,
+    #[arg(long, help = "Fixed seed for RNG (each fuzzer gets its own seed derived from the supplied value)")]
+    seed: Option<u64>,
 }
 
 
@@ -321,7 +323,11 @@ fn main() {
             let queue_corpus = InMemoryCorpus::<BytesInput>::new();
 
         let mut state = state.unwrap_or_else(|| {StdState::new(
-                StdRand::with_seed(current_nanos()),
+                StdRand::with_seed(if args.seed.is_none() {
+                    current_nanos()
+                } else {
+                    args.seed.unwrap() + (core_id.0 as u64)
+                }),
                 queue_corpus,
                 solution_corpus,
                 &mut feedback,
