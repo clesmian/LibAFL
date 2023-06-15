@@ -60,6 +60,7 @@ use libafl::{
         ShMemProvider,
         SpliceMutator,
         StdScheduledMutator,
+        StdMOptMutator,
         StdShMemProvider,
         tuple_list,
         Merge
@@ -68,7 +69,10 @@ use libafl::{
         IndexesLenTimeMinimizerScheduler,
         StdWeightedScheduler
     },
-    stages::StdMutationalStage,
+    stages::{
+        StdMutationalStage,
+        power::StdPowerMutationalStage,
+    },
     state::{
         HasCorpus,
         StdState,
@@ -101,6 +105,7 @@ compile_error!("Cannot use features data-cov-only and edge-cov-only together");
 use libafl::observers::StdMapObserver;
 #[cfg(feature="variable-data-map-size")]
 use std::num::ParseIntError;
+use libafl::schedulers::powersched::PowerSchedule;
 use libafl::stages::CalibrationStage;
 
 #[cfg(feature="variable-data-map-size")]
@@ -381,7 +386,7 @@ fn main() {
         }
 
         let scheduler = IndexesLenTimeMinimizerScheduler::new(
-            StdWeightedScheduler::new(
+            StdWeightedScheduler::with_schedule(
                 &mut state,
                 #[cfg(not(any(feature = "data-cov-only", feature = "edge-cov-only")))]
                     &calibration_observer,
@@ -389,6 +394,7 @@ fn main() {
                     &data_cov_observer,
                 #[cfg(feature = "edge-cov-only")]
                     &edge_cov_observer,
+                Some(PowerSchedule::EXPLORE)
             )
         );
 
@@ -408,13 +414,17 @@ fn main() {
 
         let mut executor = TimeoutForkserverExecutor::new(fork_server, timeout).unwrap();
 
-        let mutator = StdScheduledMutator::new(
-            havoc_mutations().merge(tuple_list!(SpliceMutator::new()))
-        );
+        // Uses values from LibAFL fuzzbench fuzzers
+        let mutator = StdMOptMutator::new(
+            &mut state,
+            havoc_mutations().merge(tuple_list!(SpliceMutator::new())),
+            7,
+            5
+        )?;
 
         let mut stages = tuple_list!(
             calibration_stage,
-            StdMutationalStage::new(mutator)
+            StdPowerMutationalStage::new(mutator)
         );
 
         let mut fuzzer = StdFuzzer::new(scheduler, feedback, objective);
