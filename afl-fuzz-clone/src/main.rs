@@ -327,11 +327,21 @@ fn main() {
         #[cfg(feature = "keep-queue-in-memory")]
             let queue_corpus = InMemoryCorpus::<BytesInput>::new();
 
+        // Don't depend on the concrete cores selected, but only on the number of cores selected
+        let mut core_id_for_rand = 0;
+        for i in 0..args.cores.ids.len(){
+            if args.cores.ids[i] == core_id {
+                core_id_for_rand = i;
+                break;
+            }
+        };
+
+
         let mut state = state.unwrap_or_else(|| {StdState::new(
                 StdRand::with_seed(if args.seed.is_none() {
                     current_nanos()
                 } else {
-                    args.seed.unwrap() + (core_id.0 as u64)
+                    args.seed.unwrap() + (core_id_for_rand as u64)
                 }),
                 queue_corpus,
                 solution_corpus,
