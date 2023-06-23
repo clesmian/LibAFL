@@ -43,6 +43,7 @@ use libafl::{
         OnDiskTOMLMonitor,
         // Other monitors imported below according to used feature
     },
+    mutators::StdMOptMutator,
     observers::{
         ConstMapObserver,
         HitcountsMapObserver,
@@ -59,11 +60,12 @@ use libafl::{
     },
     schedulers::{
         IndexesLenTimeMinimizerScheduler,
+        powersched::PowerSchedule,
         StdWeightedScheduler,
     },
     stages::{
-        StdMutationalStage,
         CalibrationStage,
+        StdPowerMutationalStage,
     },
     state::{
         HasCorpus,
@@ -273,10 +275,6 @@ fn main() {
         expect("Error during canonicalization of program path").to_owned();
     println!("Program located at: {:?}", prog_path.clone());
 
-    // TODO: Consider StdMOptMutator
-    let mutator = StdScheduledMutator::new(havoc_mutations().merge(tuple_list!(SpliceMutator::new())));
-
-
     #[cfg(not(any(feature = "data-cov-only", feature = "edge-cov-only")))]
     let calibration_feedback = AflMapFeedback::tracking(&calibration_observer, true, false);
     #[cfg(not(any(feature = "data-cov-only", feature = "edge-cov-only")))]
@@ -286,13 +284,6 @@ fn main() {
     let calibration_stage = CalibrationStage::new(&data_feedback);
     #[cfg(feature = "edge-cov-only")]
     let calibration_stage = CalibrationStage::new(&edge_feedback);
-    
-
-    let mut stages = tuple_list!(
-        calibration_stage,
-        StdMutationalStage::new(mutator)
-        );
-
 
     let mut feedback = feedback_or!(
             feedback_and_fast!(ConstFeedback::new(!(args.disregard_edges && args.fast_disregard)),
@@ -316,6 +307,18 @@ fn main() {
         &mut objective,
     ).unwrap();
 
+    let mutator = StdMOptMutator::new(
+        &mut state,
+        havoc_mutations().merge(tuple_list!(SpliceMutator::new())),
+        7,
+        5
+    ).unwrap();
+
+    let mut stages = tuple_list!(
+        calibration_stage,
+        StdPowerMutationalStage::new(mutator)
+        );
+
     #[cfg(not(any(feature = "data-cov-only", feature = "edge-cov-only")))]
         // Ensure that combined_feedback is present in the metadata map of the state
         state.add_named_metadata(
@@ -326,7 +329,7 @@ fn main() {
 
     // TODO: Check the impact of the observer here, maybe we have to do something else
     let scheduler = IndexesLenTimeMinimizerScheduler::new(
-        StdWeightedScheduler::new(
+        StdWeightedScheduler::with_schedule(
             &mut state,
             #[cfg(not(any(feature = "data-cov-only", feature = "edge-cov-only")))]
                 &calibration_observer,
@@ -334,6 +337,7 @@ fn main() {
                 &data_cov_observer,
             #[cfg(feature = "edge-cov-only")]
                 &edge_cov_observer,
+            Some(PowerSchedule::EXPLORE)
         )
     );
 
