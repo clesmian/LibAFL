@@ -50,13 +50,12 @@ use libafl::{
     },
     prelude::{
         havoc_mutations,
+        Merge,
         ShMem,
         ShMemProvider,
         SpliceMutator,
-        StdScheduledMutator,
         StdShMemProvider,
         tuple_list,
-        Merge,
     },
     schedulers::{
         IndexesLenTimeMinimizerScheduler,
@@ -71,6 +70,12 @@ use libafl::{
         StdState,
     },
 };
+#[cfg(not(any(feature = "data-cov-only", feature = "edge-cov-only")))]
+use libafl::{
+    feedbacks::MapFeedbackMetadata,
+    prelude::Named,
+    state::HasNamedMetadata,
+};
 #[cfg(feature = "keep-queue-in-memory")]
 use libafl::corpus::InMemoryCorpus;
 #[cfg(not(feature = "keep-queue-in-memory"))]
@@ -81,12 +86,6 @@ use libafl::monitors::SimpleMonitor;
 use libafl::monitors::tui::{
     TuiMonitor,
     ui::TuiUI,
-};
-#[cfg(not(any(feature = "data-cov-only", feature = "edge-cov-only")))]
-use libafl::{
-    prelude::Named,
-    feedbacks::MapFeedbackMetadata,
-    state::HasNamedMetadata,
 };
 
 #[cfg(all(feature = "data-cov-only", feature = "edge-cov-only"))]
