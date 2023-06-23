@@ -123,7 +123,7 @@ struct Arguments {
     #[cfg(not(feature = "keep-queue-in-memory"))]
     #[arg(long, short = 'm', default_value_t = false, help = "Store metadata of queue entries on disk")]
     store_queue_metadata: bool,
-    #[arg(long, default_value_t = false, help = "Output every log entry instead of only statys messages every few seconds")]
+    #[arg(long, default_value_t = false, help = "Output every log entry instead of only status messages every few seconds")]
     fast_log_output: bool,
 }
 
