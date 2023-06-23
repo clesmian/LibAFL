@@ -239,7 +239,8 @@ fn main() {
     let time_observer = TimeObserver::new("time");
 
     let edge_feedback = AflMapFeedback::tracking(&edge_cov_observer, true, false);
-    let data_feedback = AflMapFeedback::tracking(&data_cov_observer, true, false);
+    let mut data_feedback = AflMapFeedback::tracking(&data_cov_observer, true, false);
+    data_feedback.set_is_bitmap(true);
 
     let solutions_path = args.output_dir.join(PathBuf::from("crashes"));
 
