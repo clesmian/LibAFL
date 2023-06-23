@@ -130,6 +130,19 @@ fn main() {
     let args = Arguments::parse();
     println!("{:#?}", args);
 
+    #[cfg(feature = "data-cov-only")]
+    if args.disregard_data {
+        panic!("You cannot use the flag --disregard-data with this built, as it is configured \
+        to evaluate data coverage only")
+    }
+
+
+    #[cfg(feature = "edge-cov-only")]
+    if args.disregard_edges {
+        panic!("You cannot use the flag --disregard-edges with this built, as it is configured \
+        to evaluate edge coverage only")
+    }
+
     if !args.input_dir.is_dir() {
         panic!("The value of input must be a directory")
     } else {
