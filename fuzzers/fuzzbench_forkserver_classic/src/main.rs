@@ -292,10 +292,8 @@ fn fuzz(
     let forkserver = ForkserverExecutor::builder()
         .program(executable)
         .debug_child(debug_child)
-        .shmem_provider(&mut shmem_provider)
         .parse_afl_cmdline(arguments)
         .coverage_map_size(MAP_SIZE)
-        .is_persistent(true)
         .build_dynamic_map(edges_observer, tuple_list!(time_observer))
         .unwrap();
 
