@@ -111,7 +111,7 @@ pub fn main() {
     );
 
     // For fuzzbench, crashes and finds are inside the same `corpus` directory, in the "queue" and "crashes" subdir.
-    let mut out_dir = PathBuf::from(
+    let out_dir = PathBuf::from(
         res.get_one::<String>("out")
             .expect("The --output parameter is missing")
             .to_string(),
@@ -205,7 +205,7 @@ fn fuzz(
 
     // 'While the monitor are state, they are usually used in the broker - which is likely never restarted
     let monitor = OnDiskTOMLMonitor::new(
-        out_dir.push("stats.toml"),
+        out_dir.join("stats.toml"),
         SimpleMonitor::new(|s| {
             println!("{s}");
             writeln!(log.borrow_mut(), "{:?} {}", current_time(), s).unwrap();
