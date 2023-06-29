@@ -23,7 +23,7 @@ use libafl::{
     feedbacks::{CrashFeedback, MaxMapFeedback, TimeFeedback},
     fuzzer::{Fuzzer, StdFuzzer},
     inputs::BytesInput,
-    monitors::SimpleMonitor,
+    monitors::{OnDiskTOMLMonitor, SimpleMonitor},
     mutators::{
         scheduled::havoc_mutations, StdMOptMutator,
     },
@@ -125,7 +125,8 @@ pub fn main() {
     }
     let mut crashes = out_dir.clone();
     crashes.push("crashes");
-    out_dir.push("queue");
+    let mut queue = out_dir.clone();
+    queue.push("queue");
 
     let in_dir = PathBuf::from(
         res.get_one::<String>("in")
@@ -168,7 +169,7 @@ pub fn main() {
         .unwrap_or_default();
 
     fuzz(
-        out_dir,
+        queue,
         crashes,
         &in_dir,
         &logfile,
@@ -177,6 +178,7 @@ pub fn main() {
         debug_child,
         signal,
         &arguments,
+        out_dir,
     )
     .expect("An error occurred while fuzzing");
 }
@@ -192,6 +194,7 @@ fn fuzz(
     debug_child: bool,
     signal: Signal,
     arguments: &[String],
+    out_dir: PathBuf,
 ) -> Result<(), Error> {
     // a large initial map size that should be enough
     // to house all potential coverage maps for our targets
@@ -201,10 +204,13 @@ fn fuzz(
     let log = RefCell::new(OpenOptions::new().append(true).create(true).open(logfile)?);
 
     // 'While the monitor are state, they are usually used in the broker - which is likely never restarted
-    let monitor = SimpleMonitor::new(|s| {
-        println!("{s}");
-        writeln!(log.borrow_mut(), "{:?} {}", current_time(), s).unwrap();
-    });
+    let monitor = OnDiskTOMLMonitor::new(
+        out_dir.push("stats.toml"),
+        SimpleMonitor::new(|s| {
+            println!("{s}");
+            writeln!(log.borrow_mut(), "{:?} {}", current_time(), s).unwrap();
+        })
+    );
 
     // The event manager handle the various events generated during the fuzzing loop
     // such as the notification of the addition of a new item to the corpus
