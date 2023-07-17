@@ -2,6 +2,7 @@
 
 members = [
     "afl-fuzz-clone",
+    "dump-corpus",
 ]
 
 [profile.release]
