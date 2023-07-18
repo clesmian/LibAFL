@@ -1,5 +1,5 @@
 use std::env::var;
-use std::fs;
+use std::{fs, thread};
 use std::path::PathBuf;
 use std::time::Duration;
 use konst::{
@@ -48,7 +48,7 @@ use libafl::observers::StdMapObserver;
 #[cfg(feature="variable-data-map-size")]
 use std::num::ParseIntError;
 use libafl::corpus::InMemoryCorpus;
-use libafl::events::LlmpEventConverter;
+use libafl::events::{EventRestarter, LlmpEventConverter, LlmpRestartingEventManager};
 use libafl::inputs::NopInputConverter;
 use libafl::monitors::MultiMonitor;
 use libafl::schedulers::QueueScheduler;
@@ -101,6 +101,8 @@ struct Arguments {
     data_map_size: usize,
     #[arg(long, short, default_value_t = false, help = "Consider all test cases as interesting, may lead to duplications in output.")]
     all_are_interesting: bool,
+    #[arg(long, short, default_value_t = 0, value_name = "SEC", help = "Restart dumping test cases <SEC> seconds after it is done")]
+    repeatedly_dump: u64,
 }
 
 
@@ -143,7 +145,7 @@ fn main() {
     }
 
 
-    let mut run_client = |state: Option<_>, mut mgr, core_id: CoreId| {
+    let mut run_client = |state: Option<_>, mut mgr: LlmpRestartingEventManager<_, StdShMemProvider>, core_id: CoreId| {
         const CODE_MAP_SIZE: usize = 1 << 16;
         const DEFAULT_DATA_MAP_SIZE: usize = unwrap_ctx!(parse_usize(unwrap_or!(option_env!("DATA_MAP_SIZE"), "131072"))); // 1<<17 = 131072
 
@@ -282,6 +284,17 @@ fn main() {
         fuzzer
             .fuzz_one(&mut stages, &mut executor, &mut state, &mut mgr)
             .expect("Error in fuzzing loop");
+
+        println!("Dumped {} test cases to disk", state.corpus().count());
+
+        if args.repeatedly_dump == 0 {
+            // Tell the manager to not respawn this process
+            let _ = &mgr.send_exiting()?;
+        } else {
+            println!("Restarting dump in {} seconds", args.repeatedly_dump);
+            thread::sleep(Duration::from_secs(args.repeatedly_dump));
+        }
+
         Ok(())
     };
 
@@ -309,13 +322,12 @@ fn main() {
         .cores(&core)
         .stdout_file(None) // Print to stdout
         .spawn_broker(false) // Attach to broker running on args.broker_port
+        .serialize_state(false) // Prevent crash
         .build()
         .launch()
     {
         Ok(()) => (),
-        Err(Error::ShuttingDown) => println!("Fuzzing stopped by user. Good bye."),
+        Err(Error::ShuttingDown) => println!("Dumping stopped by user. Good bye."),
         Err(err) => panic!("Failed to run launcher: {:?}", err),
     }
-
-
 }
