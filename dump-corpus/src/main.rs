@@ -26,10 +26,11 @@ use libafl::{bolts::{
 }, executors::{
     ForkserverExecutor,
     TimeoutForkserverExecutor,
-}, feedback_or, feedbacks::{
+}, feedback_or, feedback_or_fast, feedbacks::{
     AflMapFeedback,
     CrashFeedback,
     TimeFeedback,
+    ConstFeedback,
 }, Fuzzer, fuzzer::StdFuzzer, inputs::BytesInput, none_input_converter, observers::{
     ConstMapObserver,
     HitcountsMapObserver,
@@ -100,6 +101,8 @@ struct Arguments {
     #[cfg(feature="variable-data-map-size")]
     #[arg(short='D', long, value_name = "SIZE", default_value_t=0x10000, value_parser=parse_maybe_hex)]
     data_map_size: usize,
+    #[arg(long, short, default_value_t = false, help = "Consider all test cases as interesting, may lead to duplications in output.")]
+    all_are_interesting: bool,
 }
 
 
@@ -188,10 +191,13 @@ fn main() {
         let mut data_feedback = AflMapFeedback::tracking(&data_cov_observer, true, false);
         data_feedback.set_is_bitmap(true);
 
-        let mut feedback = feedback_or!(
-            edge_feedback,
-            data_feedback,
-            TimeFeedback::with_observer(&time_observer)
+        let mut feedback = feedback_or_fast!(
+            feedback_or!(
+                edge_feedback,
+                data_feedback,
+                TimeFeedback::with_observer(&time_observer)
+            ),
+            ConstFeedback::new(args.all_are_interesting)
         );
 
         let mut objective = feedback_or!(
