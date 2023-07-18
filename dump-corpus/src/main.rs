@@ -251,11 +251,17 @@ fn main() {
             }
         }
 
-        let fork_server = fork_server_builder
+        let fork_server = match fork_server_builder
             .debug_child(args.debug_child)
             .coverage_map_size(map_size)
-            .build(observers)
-            .unwrap();
+            .build(observers){
+            Ok(fs) => Ok(fs),
+            Err(err) => {
+                // A bit hacky, but it works
+                _ = mgr.send_exiting();
+                Err(err)
+            }
+        }.unwrap();
 
         let timeout = Duration::from_millis(args.timeout);
         let mut executor = TimeoutForkserverExecutor::new(fork_server, timeout).unwrap();
@@ -327,7 +333,7 @@ fn main() {
         .launch()
     {
         Ok(()) => (),
-        Err(Error::ShuttingDown) => println!("Dumping stopped by user. Good bye."),
+        Err(Error::ShuttingDown) => println!("Dumping stopped. Good bye."),
         Err(err) => panic!("Failed to run launcher: {:?}", err),
     }
 }
