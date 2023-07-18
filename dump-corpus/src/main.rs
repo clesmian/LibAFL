@@ -200,14 +200,12 @@ fn main() {
             ConstFeedback::new(args.all_are_interesting)
         );
 
-        let mut objective = feedback_or!(
-            TimeFeedback::with_observer(&time_observer),
-            CrashFeedback::new()
-        );
-
+        // We do not care about the solutions
+        let mut objective = feedback_or!(ConstFeedback::new(false));
         let solution_corpus =
             InMemoryCorpus::<BytesInput>::new();
 
+        // We need InMemoryOnDiskCorpus to be able to choose whether metadata is saved to disk
         let queue_corpus = if args.store_queue_metadata {
             InMemoryOnDiskCorpus::new(
                 args.output_dir.clone()
