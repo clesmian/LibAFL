@@ -28,7 +28,6 @@ use libafl::{bolts::{
     TimeoutForkserverExecutor,
 }, feedback_or, feedback_or_fast, feedbacks::{
     AflMapFeedback,
-    CrashFeedback,
     TimeFeedback,
     ConstFeedback,
 }, Fuzzer, fuzzer::StdFuzzer, inputs::BytesInput, none_input_converter, observers::{
@@ -44,7 +43,6 @@ use libafl::{bolts::{
     HasCorpus,
     StdState,
 }};
-
 #[cfg(feature="variable-data-map-size")]
 use libafl::observers::StdMapObserver;
 #[cfg(feature="variable-data-map-size")]
@@ -279,14 +277,12 @@ fn main() {
             state
                 .load_initial_inputs(&mut fuzzer, &mut executor, &mut mgr, &input_dir)
                 .unwrap();
-            println!("Imported {} inputs from disk!", state.corpus().count());
         }
 
         fuzzer
             .fuzz_one(&mut stages, &mut executor, &mut state, &mut mgr)
             .expect("Error in fuzzing loop");
         Ok(())
-
     };
 
 
