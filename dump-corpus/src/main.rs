@@ -1,5 +1,6 @@
 use std::env::var;
-use std::{fs, thread};
+use std::{fs, io, thread};
+use std::io::BufRead;
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -101,13 +102,20 @@ struct Arguments {
     data_map_size: usize,
     #[arg(long, short, default_value_t = false, help = "Consider all test cases as interesting, may lead to duplications in output.")]
     all_are_interesting: bool,
-    #[arg(long, short, default_value_t = 0, value_name = "SEC", help = "Restart dumping test cases <SEC> seconds after it is done")]
+    #[arg(long, short, default_value_t = 0, value_name = "SEC", help = "Restart dumping test cases <SEC> seconds after it is done, implies --non-interactive/-q")]
     repeatedly_dump: u64,
+    #[arg(long, short='q', default_value_t = false, help = "Don't ask for user interaction")]
+    non_interactive: bool,
 }
 
 
 fn main() {
-    let args = Arguments::parse();
+    let mut args = Arguments::parse();
+    if args.repeatedly_dump != 0{
+        args.non_interactive = true;
+    }
+    let args = args;
+
     println!("{}", ABOUT);
     println!("{:#?}", args);
 
@@ -287,12 +295,32 @@ fn main() {
         fuzzer
             .fuzz_one(&mut stages, &mut executor, &mut state, &mut mgr)
             .expect("Error in fuzzing loop");
-
         println!("Dumped {} test cases to disk", state.corpus().count());
 
         if args.repeatedly_dump == 0 {
-            // Tell the manager to not respawn this process
-            let _ = &mgr.send_exiting()?;
+            if args.non_interactive {
+                // Tell the manager to not respawn this process
+                let _ = &mgr.send_exiting()?;
+            } else {
+                let stdin = io::stdin();
+                loop {
+                    println!("Quit [q/Q], Restart [r/R] (if you do nothing, this process will stay dormant)");
+                    let input = stdin.lock().lines().next().unwrap().unwrap().to_lowercase();
+                    match input.as_str() {
+                        "q" => {
+                            let _ = &mgr.send_exiting()?;
+                            break
+                        },
+                        "r" => {
+                            fuzzer
+                                .fuzz_one(&mut stages, &mut executor, &mut state, &mut mgr)
+                                .expect("Error in fuzzing loop");
+                            println!("Dumped {} test cases to disk", state.corpus().count());
+                        }
+                        _ => continue
+                    }
+                }
+            }
         } else {
             loop {
                 println!("Restarting dump in {} seconds", args.repeatedly_dump);
