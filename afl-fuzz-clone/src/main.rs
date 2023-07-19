@@ -59,7 +59,6 @@ use libafl::{
         ShMem,
         ShMemProvider,
         SpliceMutator,
-        StdScheduledMutator,
         StdMOptMutator,
         StdShMemProvider,
         tuple_list,
@@ -70,7 +69,6 @@ use libafl::{
         StdWeightedScheduler
     },
     stages::{
-        StdMutationalStage,
         power::StdPowerMutationalStage,
     },
     state::{
