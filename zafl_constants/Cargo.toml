@@ -1,0 +1,7 @@
+[package]
+name = "zafl_constants"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+konst = {version = "0.3.5", features = ["parsing"]}
