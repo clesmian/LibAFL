@@ -4,6 +4,7 @@ version = "0.1.1"
 edition = "2021"
 
 [features]
+default = ["keep-queue-in-memory"]
 variable-data-map-size = []
 # Enables output to nicely formatted tui monitor (has some unsolved issues that lead to hangs)
 tui = ["libafl/tui_monitor"]
