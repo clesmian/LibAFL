@@ -294,8 +294,15 @@ fn main() {
             // Tell the manager to not respawn this process
             let _ = &mgr.send_exiting()?;
         } else {
-            println!("Restarting dump in {} seconds", args.repeatedly_dump);
-            thread::sleep(Duration::from_secs(args.repeatedly_dump));
+            loop {
+                println!("Restarting dump in {} seconds", args.repeatedly_dump);
+                thread::sleep(Duration::from_secs(args.repeatedly_dump));
+                println!("Dumping test cases");
+                fuzzer
+                    .fuzz_one(&mut stages, &mut executor, &mut state, &mut mgr)
+                    .expect("Error in fuzzing loop");
+                println!("Dumped {} test cases to disk", state.corpus().count());
+            }
         }
 
         Ok(())
