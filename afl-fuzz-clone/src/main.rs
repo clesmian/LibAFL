@@ -3,10 +3,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::time::Duration;
 
-use zafl_constants::{
-    DEFAULT_DATA_MAP_SIZE,
-    CODE_MAP_SIZE
-};
+use zafl_constants::{DEFAULT_DATA_MAP_SIZE, CODE_MAP_SIZE, DEFAULT_ASAN_OPTIONS};
 
 use clap::Parser;
 use libafl::{
@@ -195,16 +192,9 @@ fn main() {
         to evaluate edge coverage only")
     }
 
-    let default_asan_options =
-        "abort_on_error=1:\
-        detect_leaks=0:\
-        malloc_context_size=0:\
-        symbolize=0:\
-        allocator_may_return_null=1".to_string();
-
     let asan_options = match var("ASAN_OPTIONS")  {
-        Ok(options) => {format!("{}:{}", default_asan_options, options)}
-        Err(_) => { default_asan_options }
+        Ok(options) => {format!("{}:{}", DEFAULT_ASAN_OPTIONS, options)}
+        Err(_) => { DEFAULT_ASAN_OPTIONS }
     };
     println!("Setting ASAN_OPTIONS to: '{}'", &asan_options);
 
