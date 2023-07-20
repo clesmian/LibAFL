@@ -16,9 +16,9 @@ pub const DEFAULT_DATA_MAP_SIZE: usize =
  symbolize=0 -> performance optimization (we don't keep the output, so we do not care about the actual function names)
  allocator_may_return_null=1 -> don't crash when running OOM
  */
-pub const DEFAULT_ASAN_OPTIONS: String =
+pub const DEFAULT_ASAN_OPTIONS: &str =
        "abort_on_error=1:\
         detect_leaks=0:\
         malloc_context_size=0:\
         symbolize=0:\
-        allocator_may_return_null=1".to_string();
+        allocator_may_return_null=1";

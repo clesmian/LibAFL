@@ -194,7 +194,7 @@ fn main() {
 
     let asan_options = match var("ASAN_OPTIONS")  {
         Ok(options) => {format!("{}:{}", DEFAULT_ASAN_OPTIONS, options)}
-        Err(_) => { DEFAULT_ASAN_OPTIONS }
+        Err(_) => { DEFAULT_ASAN_OPTIONS.to_string() }
     };
     println!("Setting ASAN_OPTIONS to: '{}'", &asan_options);
 
