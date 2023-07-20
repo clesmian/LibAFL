@@ -3,6 +3,9 @@ use std::fs;
 use std::path::PathBuf;
 use std::time::Duration;
 
+use shadow_rs::shadow;
+shadow!(build);
+
 use zafl_constants::{DEFAULT_DATA_MAP_SIZE, CODE_MAP_SIZE, DEFAULT_ASAN_OPTIONS};
 
 use clap::Parser;
@@ -122,7 +125,7 @@ const ABOUT: & str = "An AFL-like fuzzer with multi-core support";
 
 #[derive(Parser)]
 #[derive(Debug)]
-#[command(about=ABOUT)]
+#[command(about=ABOUT, version=build::CLAP_LONG_VERSION)]
 struct Arguments {
     #[arg(short, long, value_name = "PATH")]
     input_dir: PathBuf,

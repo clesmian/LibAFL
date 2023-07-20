@@ -2,6 +2,7 @@
 name = "afl-fuzz-clone"
 version = "0.1.1"
 edition = "2021"
+build = "build.rs"
 
 [features]
 default = ["keep-queue-in-memory"]
@@ -21,3 +22,7 @@ edge-cov-only = []
 libafl = {path="../../LibAFL/libafl", features = []}
 clap = {version = "4.1.4", features = ["derive"] }
 zafl_constants = {path = "../zafl_constants"}
+shadow-rs = "0.23.0"
+
+[build-dependencies]
+shadow-rs = "0.23.0"

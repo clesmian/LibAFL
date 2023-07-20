@@ -4,6 +4,9 @@ use std::io::BufRead;
 use std::path::PathBuf;
 use std::time::Duration;
 
+use shadow_rs::shadow;
+shadow!(build);
+
 use zafl_constants::{
     DEFAULT_DATA_MAP_SIZE,
     CODE_MAP_SIZE
@@ -70,7 +73,7 @@ const ABOUT: & str = "Attaches to a running broker and dumps its corpus to out-d
 
 #[derive(Parser)]
 #[derive(Debug)]
-#[command(about=ABOUT)]
+#[command(about=ABOUT, version=build::CLAP_LONG_VERSION)]
 struct Arguments {
     #[arg(short, long, value_name = "PATH", )]
     input_dir: PathBuf,
