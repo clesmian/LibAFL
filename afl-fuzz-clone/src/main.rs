@@ -169,6 +169,9 @@ struct Arguments {
     #[cfg(not(feature = "keep-queue-in-memory"))]
     #[arg(long, short = 'm', default_value_t = false, help = "Store metadata of queue entries on disk")]
     store_queue_metadata: bool,
+    #[cfg(not(feature = "keep-queue-in-memory"))]
+    #[arg(long, short = 'Q', help = "Store queue in this directory instead of one dir per fuzzer under out")]
+    queue_directory: Option<PathBuf>,
     #[cfg(feature="variable-data-map-size")]
     #[arg(short='D', long, value_name = "SIZE", default_value_t=0x10000, value_parser=parse_maybe_hex)]
     data_map_size: usize,
@@ -303,15 +306,17 @@ fn main() {
 
         // TODO: Implement commandline flag to be able to switch at runtime
         #[cfg(not(feature = "keep-queue-in-memory"))]
-            let queue_corpus = if args.store_queue_metadata {
-                InMemoryOnDiskCorpus::new(
-                    args.output_dir.join(format!("queue_{}", core_id.0))
-                ).expect("Could not create queue corpus")
-            } else {
-                InMemoryOnDiskCorpus::no_meta(
-                    args.output_dir.join(format!("queue_{}", core_id.0))
-                ).expect("Could not create queue corpus")
-            };
+        let queue_dir = match args.queue_directory.clone() {
+            None => args.output_dir.join(format!("queue_{}", core_id.0)),
+            Some(dir) => dir
+        };
+
+        #[cfg(not(feature = "keep-queue-in-memory"))]
+        let queue_corpus = if args.store_queue_metadata {
+            InMemoryOnDiskCorpus::new(queue_dir).expect("Could not create queue corpus")
+        } else {
+            InMemoryOnDiskCorpus::no_meta(queue_dir).expect("Could not create queue corpus")
+        };
 
         #[cfg(feature = "keep-queue-in-memory")]
             let queue_corpus = InMemoryCorpus::<BytesInput>::new();
@@ -444,6 +449,18 @@ fn main() {
 
     };
 
+
+    #[cfg(not(feature = "keep-queue-in-memory"))]
+    if args.queue_directory.is_some(){
+        let dir = args.queue_directory.clone().unwrap();
+        if !dir.exists(){
+            fs::create_dir(dir.clone()).expect("Failed to create queue_dir");
+        }
+        if !dir.is_dir() || fs::read_dir(dir.clone()).unwrap().count() != 0 {
+            panic!("ERROR: Designated queue dir {:?} is not an empty directory!", dir)
+        }
+
+    }
 
     if !args.output_dir.is_dir(){
         if args.output_dir.is_file(){
