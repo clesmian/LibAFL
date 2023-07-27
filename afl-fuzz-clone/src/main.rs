@@ -270,6 +270,7 @@ fn main() {
         let edge_feedback = AflMapFeedback::tracking(&edge_cov_observer, true, false);
         let mut data_feedback = AflMapFeedback::tracking(&data_cov_observer, true, false);
         data_feedback.set_is_bitmap(true);
+        let data_feedback = data_feedback;
 
         #[cfg(not(any(feature = "data-cov-only", feature = "edge-cov-only")))]
             let calibration_feedback = AflMapFeedback::tracking(&calibration_observer, true, false);
