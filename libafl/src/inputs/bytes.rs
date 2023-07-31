@@ -5,12 +5,13 @@ use alloc::{borrow::ToOwned, rc::Rc, string::String, vec::Vec};
 use core::{
     cell::RefCell,
     convert::From,
-    hash::{BuildHasher, Hasher},
 };
+
+use sha2::{Sha256, Digest};
+
 #[cfg(feature = "std")]
 use std::{fs::File, io::Read, path::Path};
 
-use ahash::RandomState;
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "std")]
@@ -51,9 +52,12 @@ impl Input for BytesInput {
 
     /// Generate a name for this input
     fn generate_name(&self, _idx: usize) -> String {
-        let mut hasher = RandomState::with_seeds(0, 0, 0, 0).build_hasher();
-        hasher.write(self.bytes());
-        format!("{:016x}", hasher.finish())
+
+        let mut hasher = Sha256::new();
+        hasher.update(self.bytes());
+        let result = hasher.finalize();
+
+        format!("{:064x}", result)
     }
 }
 

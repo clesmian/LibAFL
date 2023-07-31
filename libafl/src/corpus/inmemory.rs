@@ -3,6 +3,9 @@
 use alloc::vec::Vec;
 use core::cell::RefCell;
 
+use std::collections::BTreeMap;
+use std::string::String;
+
 use serde::{Deserialize, Serialize};
 
 use super::HasTestcase;
@@ -294,6 +297,7 @@ where
 {
     storage: TestcaseStorage<I>,
     current: Option<CorpusId>,
+    hashes: BTreeMap<String, CorpusId>,
 }
 
 impl<I> UsesInput for InMemoryCorpus<I>
@@ -315,8 +319,21 @@ where
 
     /// Add an entry to the corpus and return its index
     #[inline]
-    fn add(&mut self, testcase: Testcase<I>) -> Result<CorpusId, Error> {
-        Ok(self.storage.insert(RefCell::new(testcase)))
+    fn add(&mut self, mut testcase: Testcase<I>) -> Result<CorpusId, Error> {
+        let file_name = testcase.filename_mut().take().unwrap_or_else(|| {
+            // TODO walk entry metadata to ask for pieces of filename (e.g. :havoc in AFL)
+
+            testcase.input().as_ref().unwrap().generate_name(0)
+        });
+
+        match self.hashes.get(&file_name) {
+            Some(&id) => Ok(id),
+            None => {
+                let id = self.storage.insert(RefCell::new(testcase));
+                self.hashes.insert(file_name,  id);
+                Ok(id)
+            }
+        }
     }
 
     /// Replaces the testcase at the given idx
@@ -423,6 +440,7 @@ where
         Self {
             storage: TestcaseStorage::new(),
             current: None,
+            hashes: BTreeMap::new()
         }
     }
 }
