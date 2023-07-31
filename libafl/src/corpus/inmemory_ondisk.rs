@@ -162,6 +162,12 @@ where
         };
         input.to_file(file_path)
     }
+
+    /// Return whether the same input already exists in queue
+    fn input_exists(&self, testcase: &Testcase<Self::Input>) -> bool{ 
+        self.inner.input_exists(testcase)
+    }
+
 }
 
 impl<I> HasTestcase for InMemoryOnDiskCorpus<I>

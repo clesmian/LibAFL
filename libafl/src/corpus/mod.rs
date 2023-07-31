@@ -144,6 +144,11 @@ pub trait Corpus: UsesInput + Serialize + for<'de> Deserialize<'de> {
         let mut testcase = self.get(idx)?.borrow_mut();
         Ok(testcase.load_input(self)?.clone())
     }
+
+    /// Return whether the same input already exists in queue
+    fn input_exists(&self, _: &Testcase<Self::Input>) -> bool{ 
+        false
+    }
 }
 
 /// [`Iterator`] over the ids of a [`Corpus`]

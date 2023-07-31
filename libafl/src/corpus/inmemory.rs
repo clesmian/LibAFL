@@ -1,6 +1,6 @@
 //! In-memory corpus, keeps all test cases in memory at all times
 
-use alloc::vec::Vec;
+use alloc::{vec::Vec, borrow::ToOwned};
 use core::cell::RefCell;
 
 use std::collections::BTreeMap;
@@ -326,14 +326,12 @@ where
             testcase.input().as_ref().unwrap().generate_name(0)
         });
 
-        match self.hashes.get(&file_name) {
-            Some(&id) => Ok(id),
-            None => {
-                let id = self.storage.insert(RefCell::new(testcase));
-                self.hashes.insert(file_name,  id);
-                Ok(id)
-            }
+        let id = self.storage.insert(RefCell::new(testcase));
+        if self.hashes.insert(file_name,  id).is_some(){
+            panic!("We should not have duplicate entries in the queue")
         }
+        
+        Ok(id)
     }
 
     /// Replaces the testcase at the given idx
@@ -407,6 +405,15 @@ where
     #[inline]
     fn store_input_from(&self, _: &Testcase<Self::Input>) -> Result<(), Error> {
         Ok(())
+    }
+
+    /// Return whether the same input already exists in queue
+    fn input_exists(&self, testcase: &Testcase<Self::Input>) -> bool{ 
+        let file_name = match testcase.filename().as_ref() {
+            Some(name) => name.to_owned(),
+            None => testcase.input().as_ref().unwrap().generate_name(0)
+        };
+        return self.hashes.contains_key(&file_name)
     }
 }
 

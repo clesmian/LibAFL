@@ -389,31 +389,38 @@ where
                 let mut testcase = Testcase::with_executions(input.clone(), *state.executions());
                 self.feedback_mut()
                     .append_metadata(state, observers, &mut testcase)?;
-                let idx = state.corpus_mut().add(testcase)?;
-                self.scheduler_mut().on_add(state, idx)?;
+                
+                if !state.corpus().input_exists(&testcase){
+                        
 
-                if send_events {
-                    // TODO set None for fast targets
-                    let observers_buf = if manager.configuration() == EventConfig::AlwaysUnique {
-                        None
-                    } else {
-                        Some(manager.serialize_observers::<OT>(observers)?)
-                    };
-                    manager.fire(
-                        state,
-                        Event::NewTestcase {
-                            input,
-                            observers_buf,
-                            exit_kind: *exit_kind,
-                            corpus_size: state.corpus().count(),
-                            client_config: manager.configuration(),
-                            time: current_time(),
-                            executions: *state.executions(),
-                            forward_id: None,
-                        },
-                    )?;
+                    let idx = state.corpus_mut().add(testcase)?;
+                    self.scheduler_mut().on_add(state, idx)?;
+
+                    if send_events {
+                        // TODO set None for fast targets
+                        let observers_buf = if manager.configuration() == EventConfig::AlwaysUnique {
+                            None
+                        } else {
+                            Some(manager.serialize_observers::<OT>(observers)?)
+                        };
+                        manager.fire(
+                            state,
+                            Event::NewTestcase {
+                                input,
+                                observers_buf,
+                                exit_kind: *exit_kind,
+                                corpus_size: state.corpus().count(),
+                                client_config: manager.configuration(),
+                                time: current_time(),
+                                executions: *state.executions(),
+                                forward_id: None,
+                            },
+                        )?;
+                    }
+                    Ok((res, Some(idx)))
+                } else {
+                    Ok((ExecuteInputResult::None, None))
                 }
-                Ok((res, Some(idx)))
             }
             ExecuteInputResult::Solution => {
                 // Not interesting
