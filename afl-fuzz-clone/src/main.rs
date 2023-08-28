@@ -201,8 +201,8 @@ fn main() {
 
     // CHECK STARTING FROM HERE
 
-    const CODE_MAP_SIZE: usize = 1 << 16;
-    const DEFAULT_DATA_MAP_SIZE: usize = unwrap_ctx!(parse_usize(unwrap_or!(option_env!("DATA_MAP_SIZE"), "131072"))); // 1<<17 = 131072
+    const CODE_MAP_SIZE: usize = 1 << 17;
+    const DEFAULT_DATA_MAP_SIZE: usize = 1 << 17;
 
 
     let map_size: usize = CODE_MAP_SIZE + DEFAULT_DATA_MAP_SIZE;
