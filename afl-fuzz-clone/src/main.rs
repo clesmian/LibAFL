@@ -82,13 +82,7 @@ use libafl::{
 use libafl::corpus::InMemoryCorpus;
 #[cfg(not(feature = "keep-queue-in-memory"))]
 use libafl::corpus::InMemoryOnDiskCorpus;
-#[cfg(not(feature = "tui"))]
 use libafl::monitors::SimpleMonitor;
-#[cfg(feature = "tui")]
-use libafl::monitors::tui::{
-    TuiMonitor,
-    ui::TuiUI,
-};
 
 #[cfg(all(feature = "data-cov-only", feature = "edge-cov-only"))]
 compile_error!("Cannot use features data-cov-only and edge-cov-only together");
@@ -204,13 +198,6 @@ fn main() {
             true
         ),
     );
-    #[cfg(feature = "tui")]
-        // Save stats to disk every 60 seconds
-        let stats = OnDiskTOMLMonitor::new(
-        args.output_dir.join("stats.toml"),
-        TuiMonitor::new(TuiUI::new(String::from("My Monitor"), true)),
-    );
-
 
     // CHECK STARTING FROM HERE
 
