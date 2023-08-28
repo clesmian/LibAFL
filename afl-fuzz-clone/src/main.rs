@@ -242,6 +242,7 @@ fn main() {
     let edge_feedback = AflMapFeedback::tracking(&edge_cov_observer, true, false);
     let mut data_feedback = AflMapFeedback::tracking(&data_cov_observer, true, false);
     data_feedback.set_is_bitmap(true);
+    let data_feedback = data_feedback;
 
     let solutions_path = args.output_dir.join(PathBuf::from("crashes"));
 
