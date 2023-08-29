@@ -792,7 +792,7 @@ pub struct SolutionType {
     pub solution_type: String,
 }
 
-crate::impl_serdeany!(SolutionType);
+libafl_bolts::impl_serdeany!(SolutionType);
 
 /// A [`CrashFeedback`] reports as interesting if the target crashed.
 #[derive(Serialize, Deserialize, Clone, Debug)]
