@@ -12,21 +12,32 @@ use zafl_constants::{
     CODE_MAP_SIZE
 };
 
-use clap::Parser;
-use libafl::{bolts::{
+use libafl_bolts::{
     AsMutSlice,
     core_affinity::{
         Cores,
         CoreId,
     },
     current_nanos,
-    launcher::Launcher,
     rands::StdRand,
-}, corpus::{
+    shmem::{
+        ShMem,
+        ShMemProvider,
+        StdShMemProvider,
+    },
+    tuples::tuple_list
+};
+
+use clap::Parser;
+use libafl::{
+corpus::{
     Corpus,
     InMemoryOnDiskCorpus,
-}, Error, events::{
-    EventConfig::AlwaysUnique
+}, 
+Error, 
+events::{
+    EventConfig::AlwaysUnique,
+    Launcher
 }, executors::{
     ForkserverExecutor,
     TimeoutForkserverExecutor,
@@ -38,11 +49,6 @@ use libafl::{bolts::{
     ConstMapObserver,
     HitcountsMapObserver,
     TimeObserver,
-}, prelude::{
-    ShMem,
-    ShMemProvider,
-    StdShMemProvider,
-    tuple_list,
 }, state::{
     HasCorpus,
     StdState,

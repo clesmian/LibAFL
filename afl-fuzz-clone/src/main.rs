@@ -8,18 +8,28 @@ shadow!(build);
 
 use zafl_constants::{DEFAULT_DATA_MAP_SIZE, CODE_MAP_SIZE, DEFAULT_ASAN_OPTIONS};
 
+use libafl_bolts::{
+    AsMutSlice,
+    core_affinity::{
+        Cores,
+        CoreId,
+    },
+    current_nanos,
+    rands::StdRand,
+    shmem::{
+        ShMem,
+        ShMemProvider,
+        StdShMemProvider,
+    },
+    tuples::{
+        tuple_list,
+        Merge,
+    },
+    Named
+};
+
 use clap::Parser;
 use libafl::{
-    bolts::{
-        AsMutSlice,
-        core_affinity::{
-            Cores,
-            CoreId,
-        },
-        current_nanos,
-        launcher::Launcher,
-        rands::StdRand,
-    },
     corpus::{
         Corpus,
         OnDiskCorpus,
@@ -27,7 +37,8 @@ use libafl::{
     Error,
     events::{
         EventConfig,
-        EventConfig::AlwaysUnique
+        EventConfig::AlwaysUnique,
+        Launcher
     },
     executors::{
         ForkserverExecutor,
@@ -56,13 +67,8 @@ use libafl::{
     },
     prelude::{
         havoc_mutations,
-        ShMem,
-        ShMemProvider,
         SpliceMutator,
         StdMOptMutator,
-        StdShMemProvider,
-        tuple_list,
-        Merge
     },
     schedulers::{
         IndexesLenTimeMinimizerScheduler,
@@ -91,7 +97,6 @@ use libafl::monitors::tui::{
 
 #[cfg(not(any(feature = "data-cov-only", feature = "edge-cov-only")))]
 use libafl::{
-    prelude::Named,
     feedbacks::MapFeedbackMetadata,
     state::HasNamedMetadata,
 };

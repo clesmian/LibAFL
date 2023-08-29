@@ -20,6 +20,7 @@ edge-cov-only = []
 
 [dependencies]
 libafl = {path="../../LibAFL/libafl", features = []}
+libafl_bolts = {path="../../LibAFL/libafl_bolts"}
 clap = {version = "4.1.4", features = ["derive"] }
 zafl_constants = {path = "../zafl_constants"}
 shadow-rs = "0.23.0"
