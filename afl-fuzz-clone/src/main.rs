@@ -6,18 +6,25 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use clap::Parser;
-use konst::{
-    option::unwrap_or,
-    primitive::parse_usize,
-    result::unwrap_ctx,
-};
-use libafl::{
-    bolts::{
-        AsMutSlice,
-        current_nanos,
-        current_time,
-        rands::StdRand,
+
+use libafl_bolts::{
+    AsMutSlice,
+    current_nanos,
+    current_time,
+    rands::StdRand,
+    shmem::{
+        ShMem,
+        ShMemProvider,
+        StdShMemProvider,
     },
+    tuples::{
+        tuple_list,
+        Merge,
+    },
+    Named
+};
+
+use libafl::{
     corpus::{
         Corpus,
         OnDiskCorpus,
@@ -51,12 +58,7 @@ use libafl::{
     },
     prelude::{
         havoc_mutations,
-        Merge,
-        ShMem,
-        ShMemProvider,
         SpliceMutator,
-        StdShMemProvider,
-        tuple_list,
     },
     schedulers::{
         IndexesLenTimeMinimizerScheduler,
@@ -75,7 +77,6 @@ use libafl::{
 #[cfg(not(any(feature = "data-cov-only", feature = "edge-cov-only")))]
 use libafl::{
     feedbacks::MapFeedbackMetadata,
-    prelude::Named,
     state::HasNamedMetadata,
 };
 #[cfg(feature = "keep-queue-in-memory")]

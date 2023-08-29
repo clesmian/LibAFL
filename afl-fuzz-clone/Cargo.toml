@@ -19,5 +19,6 @@ edge-cov-only = []
 
 [dependencies]
 libafl = {path="../../LibAFL/libafl", features = []}
+libafl_bolts = {path="../../LibAFL/libafl_bolts"}
 clap = {version = "4.1.4", features = ["derive"] }
 konst = {version = "0.3.5", features = ["parsing"]}
