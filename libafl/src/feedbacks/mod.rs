@@ -778,13 +778,6 @@ where
 }
 
 
-impl Named for () {
-    #[inline]
-    fn name(&self) -> &str {
-        "Empty"
-    }
-}
-
 /// A testcase metadata holding the type of solution as a string
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SolutionType {
