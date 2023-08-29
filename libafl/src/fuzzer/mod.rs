@@ -3,6 +3,7 @@
 use alloc::string::ToString;
 use core::{fmt::Debug, marker::PhantomData, time::Duration};
 
+use libafl_bolts::current_time;
 use serde::{de::DeserializeOwned, Serialize};
 
 #[cfg(test)]
@@ -12,7 +13,6 @@ use crate::monitors::PerfFeature;
 #[cfg(test)]
 use crate::state::NopState;
 use crate::{
-    bolts::current_time,
     corpus::{Corpus, CorpusId, HasTestcase, Testcase},
     events::{Event, EventConfig, EventFirer, EventProcessor, ProgressReporter},
     executors::{Executor, ExitKind, HasObservers},
@@ -23,7 +23,10 @@ use crate::{
     schedulers::Scheduler,
     stages::StagesTuple,
     start_timer,
-    state::{HasClientPerfMonitor, HasCorpus, HasExecutions, HasMetadata, HasSolutions, UsesState},
+    state::{
+        HasClientPerfMonitor, HasCorpus, HasExecutions, HasLastReportTime, HasMetadata,
+        HasSolutions, UsesState,
+    },
     Error,
 };
 
@@ -155,7 +158,7 @@ where
 /// The main fuzzer trait.
 pub trait Fuzzer<E, EM, ST>: Sized + UsesState
 where
-    Self::State: HasClientPerfMonitor + HasMetadata + HasExecutions,
+    Self::State: HasClientPerfMonitor + HasMetadata + HasExecutions + HasLastReportTime,
     E: UsesState<State = Self::State>,
     EM: ProgressReporter<State = Self::State>,
     ST: StagesTuple<E, EM, Self::State, Self>,
@@ -185,11 +188,10 @@ where
         state: &mut EM::State,
         manager: &mut EM,
     ) -> Result<CorpusId, Error> {
-        let mut last = current_time();
         let monitor_timeout = STATS_TIMEOUT_DEFAULT;
         loop {
+            manager.maybe_report_progress(state, monitor_timeout)?;
             self.fuzz_one(stages, executor, state, manager)?;
-            last = manager.maybe_report_progress(state, last, monitor_timeout)?;
         }
     }
 
@@ -217,13 +219,14 @@ where
         }
 
         let mut ret = None;
-        let mut last = current_time();
         let monitor_timeout = STATS_TIMEOUT_DEFAULT;
 
         for _ in 0..iters {
+            manager.maybe_report_progress(state, monitor_timeout)?;
             ret = Some(self.fuzz_one(stages, executor, state, manager)?);
-            last = manager.maybe_report_progress(state, last, monitor_timeout)?;
         }
+
+        manager.report_progress(state)?;
 
         // If we would assume the fuzzer loop will always exit after this, we could do this here:
         // manager.on_restart(state)?;
@@ -335,9 +338,9 @@ where
     /// Evaluate if a set of observation channels has an interesting state
     fn process_execution<EM>(
         &mut self,
-        state: &mut CS::State,
+        state: &mut Self::State,
         manager: &mut EM,
-        input: <CS::State as UsesInput>::Input,
+        input: <Self::State as UsesInput>::Input,
         observers: &OT,
         exit_kind: &ExitKind,
         send_events: bool,
@@ -397,7 +400,7 @@ where
                     let observers_buf = if manager.configuration() == EventConfig::AlwaysUnique {
                         None
                     } else {
-                        Some(manager.serialize_observers::<OT>(observers)?)
+                        manager.serialize_observers::<OT>(observers)?
                     };
                     manager.fire(
                         state,
@@ -486,10 +489,10 @@ where
     #[inline]
     fn evaluate_input_events(
         &mut self,
-        state: &mut CS::State,
+        state: &mut Self::State,
         executor: &mut E,
         manager: &mut EM,
-        input: <CS::State as UsesInput>::Input,
+        input: <Self::State as UsesInput>::Input,
         send_events: bool,
     ) -> Result<(ExecuteInputResult, Option<CorpusId>), Error> {
         self.evaluate_input_with_observers(state, executor, manager, input, send_events)
@@ -498,47 +501,57 @@ where
     /// Adds an input, even if it's not considered `interesting` by any of the executors
     fn add_input(
         &mut self,
-        state: &mut CS::State,
+        state: &mut Self::State,
         executor: &mut E,
         manager: &mut EM,
-        input: <CS::State as UsesInput>::Input,
+        input: <Self::State as UsesInput>::Input,
     ) -> Result<CorpusId, Error> {
         let exit_kind = self.execute_input(state, executor, manager, &input)?;
         let observers = executor.observers();
         // Always consider this to be "interesting"
+        let mut testcase = Testcase::with_executions(input.clone(), *state.executions());
 
-        // However, we still want to trigger the side effects of objectives and feedbacks.
+        // Maybe a solution
         #[cfg(not(feature = "introspection"))]
-        let _is_solution = self
+        let is_solution = self
             .objective_mut()
             .is_interesting(state, manager, &input, observers, &exit_kind)?;
 
         #[cfg(feature = "introspection")]
-        let _is_solution = self
+        let is_solution = self
             .objective_mut()
             .is_interesting_introspection(state, manager, &input, observers, &exit_kind)?;
 
-        #[cfg(not(feature = "introspection"))]
-        let _is_corpus = self
-            .feedback_mut()
-            .is_interesting(state, manager, &input, observers, &exit_kind)?;
+        if is_solution {
+            self.objective_mut()
+                .append_metadata(state, observers, &mut testcase)?;
+            let idx = state.solutions_mut().add(testcase)?;
 
-        #[cfg(feature = "introspection")]
-        let _is_corpus = self
-            .feedback_mut()
-            .is_interesting_introspection(state, manager, &input, observers, &exit_kind)?;
+            manager.fire(
+                state,
+                Event::Objective {
+                    objective_size: state.solutions().count(),
+                },
+            )?;
+            return Ok(idx);
+        }
 
         // Not a solution
         self.objective_mut().discard_metadata(state, &input)?;
 
         // several is_interesting implementations collect some data about the run, later used in
         // append_metadata; we *must* invoke is_interesting here to collect it
-        let _: bool = self
+        #[cfg(not(feature = "introspection"))]
+        let _is_corpus = self
             .feedback_mut()
             .is_interesting(state, manager, &input, observers, &exit_kind)?;
 
+        #[cfg(feature = "introspection")]
+        let _is_corpus = self
+            .feedback_mut()
+            .is_interesting_introspection(state, manager, &input, observers, &exit_kind)?;
+
         // Add the input to the main corpus
-        let mut testcase = Testcase::with_executions(input.clone(), *state.executions());
         self.feedback_mut()
             .append_metadata(state, observers, &mut testcase)?;
         let idx = state.corpus_mut().add(testcase)?;
@@ -547,7 +560,7 @@ where
         let observers_buf = if manager.configuration() == EventConfig::AlwaysUnique {
             None
         } else {
-            Some(manager.serialize_observers::<OT>(observers)?)
+            manager.serialize_observers::<OT>(observers)?
         };
         manager.fire(
             state,
@@ -573,7 +586,12 @@ where
     EM: ProgressReporter + EventProcessor<E, Self, State = CS::State>,
     F: Feedback<CS::State>,
     OF: Feedback<CS::State>,
-    CS::State: HasClientPerfMonitor + HasExecutions + HasMetadata + HasCorpus + HasTestcase,
+    CS::State: HasClientPerfMonitor
+        + HasExecutions
+        + HasMetadata
+        + HasCorpus
+        + HasTestcase
+        + HasLastReportTime,
     ST: StagesTuple<E, EM, CS::State, Self>,
 {
     fn fuzz_one(
@@ -775,10 +793,10 @@ where
 pub mod pybind {
     use alloc::{boxed::Box, vec::Vec};
 
+    use libafl_bolts::ownedref::OwnedMutPtr;
     use pyo3::prelude::*;
 
     use crate::{
-        bolts::ownedref::OwnedMutPtr,
         events::pybind::PythonEventManager,
         executors::pybind::PythonExecutor,
         feedbacks::pybind::PythonFeedback,

@@ -5,10 +5,10 @@ use alloc::vec::Vec;
 use core::{any::type_name, cmp::Ordering, marker::PhantomData};
 
 use hashbrown::{HashMap, HashSet};
+use libafl_bolts::{rands::Rand, serdeany::SerdeAny, AsSlice, HasRefCnt};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    bolts::{rands::Rand, serdeany::SerdeAny, AsSlice, HasRefCnt},
     corpus::{Corpus, CorpusId, Testcase},
     feedbacks::MapIndexesMetadata,
     inputs::UsesInput,
@@ -23,18 +23,26 @@ pub const DEFAULT_SKIP_NON_FAVORED_PROB: u64 = 95;
 
 /// A testcase metadata saying if a testcase is favored
 #[derive(Debug, Serialize, Deserialize)]
+#[cfg_attr(
+    any(not(feature = "serdeany_autoreg"), miri),
+    allow(clippy::unsafe_derive_deserialize)
+)] // for SerdeAny
 pub struct IsFavoredMetadata {}
 
-crate::impl_serdeany!(IsFavoredMetadata);
+libafl_bolts::impl_serdeany!(IsFavoredMetadata);
 
 /// A state metadata holding a map of favoreds testcases for each map entry
 #[derive(Debug, Serialize, Deserialize)]
+#[cfg_attr(
+    any(not(feature = "serdeany_autoreg"), miri),
+    allow(clippy::unsafe_derive_deserialize)
+)] // for SerdeAny
 pub struct TopRatedsMetadata {
     /// map index -> corpus index
     pub map: HashMap<usize, CorpusId>,
 }
 
-crate::impl_serdeany!(TopRatedsMetadata);
+libafl_bolts::impl_serdeany!(TopRatedsMetadata);
 
 impl TopRatedsMetadata {
     /// Creates a new [`struct@TopRatedsMetadata`]
@@ -93,7 +101,7 @@ where
         self.update_score(state, idx)
     }
 
-    /// Removes an entry from the corpus, returning M if M was present.
+    /// Removes an entry from the corpus
     fn on_remove(
         &mut self,
         state: &mut CS::State,
@@ -105,7 +113,7 @@ where
             if let Some(meta) = state.metadata_map_mut().get_mut::<TopRatedsMetadata>() {
                 let entries = meta
                     .map
-                    .drain_filter(|_, other_idx| *other_idx == idx)
+                    .extract_if(|_, other_idx| *other_idx == idx)
                     .map(|(entry, _)| entry)
                     .collect::<Vec<_>>();
                 entries
@@ -189,7 +197,7 @@ where
     M: AsSlice<Entry = usize> + SerdeAny + HasRefCnt,
     CS::State: HasCorpus + HasMetadata + HasRand,
 {
-    /// Add an entry to the corpus and return its index
+    /// Called when a [`Testcase`] is added to the corpus
     fn on_add(&mut self, state: &mut CS::State, idx: CorpusId) -> Result<(), Error> {
         self.base.on_add(state, idx)?;
         self.update_score(state, idx)
@@ -244,7 +252,7 @@ where
     M: AsSlice<Entry = usize> + SerdeAny + HasRefCnt,
     CS::State: HasCorpus + HasMetadata + HasRand,
 {
-    /// Update the `Corpus` score using the `MinimizerScheduler`
+    /// Update the [`Corpus`] score using the [`MinimizerScheduler`]
     #[allow(clippy::unused_self)]
     #[allow(clippy::cast_possible_wrap)]
     pub fn update_score(&self, state: &mut CS::State, idx: CorpusId) -> Result<(), Error> {
@@ -319,10 +327,12 @@ where
         Ok(())
     }
 
-    /// Cull the `Corpus` using the `MinimizerScheduler`
+    /// Cull the [`Corpus`] using the [`MinimizerScheduler`]
     #[allow(clippy::unused_self)]
-    pub fn cull(&self, state: &mut CS::State) -> Result<(), Error> {
-        let Some(top_rated) = state.metadata_map().get::<TopRatedsMetadata>() else { return Ok(()) };
+    pub fn cull(&self, state: &CS::State) -> Result<(), Error> {
+        let Some(top_rated) = state.metadata_map().get::<TopRatedsMetadata>() else {
+            return Ok(());
+        };
 
         let mut acc = HashSet::new();
 

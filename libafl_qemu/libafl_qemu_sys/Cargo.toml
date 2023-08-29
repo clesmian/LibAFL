@@ -1,6 +1,6 @@
 [package]
 name = "libafl_qemu_sys"
-version = "0.10.1"
+version = "0.11.0"
 authors = ["Andrea Fioraldi <andreafioraldi@gmail.com>"]
 description = "C to Rust bindings for the LibAFL QEMU bridge"
 documentation = "https://docs.rs/libafl_qemu_sys"
@@ -11,6 +11,9 @@ keywords = ["fuzzing", "qemu", "instrumentation"]
 edition = "2021"
 categories = ["development-tools::testing", "emulators", "embedded", "os", "no-std"]
 
+[package.metadata.docs.rs]
+all-features = true
+
 [features]
 # The following architecture features are mutually exclusive.
 x86_64 = [] # build qemu for x86_64 (default)
@@ -19,6 +22,7 @@ arm = [] # build qemu for arm
 aarch64 = [] # build qemu for aarch64
 mips = [] # build qemu for mips (el, use with the 'be' feature of mips be)
 ppc = [] # build qemu for powerpc
+hexagon = [] # build qemu for hexagon
 
 be = []
 
@@ -32,4 +36,4 @@ clippy = [ "libafl_qemu_build/clippy" ] # special feature for clippy, don't use 
 [dependencies]
 
 [build-dependencies]
-libafl_qemu_build = { path = "../libafl_qemu_build", version = "0.10.1" }
+libafl_qemu_build = { path = "../libafl_qemu_build", version = "0.11.0" }

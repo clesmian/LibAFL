@@ -3,6 +3,7 @@
 use alloc::string::{String, ToString};
 use core::marker::PhantomData;
 
+use libafl_bolts::math::integer_sqrt;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -13,16 +14,6 @@ use crate::{
     state::{HasCorpus, HasExecutions, HasMetadata, HasRand, UsesState},
     Error,
 };
-
-fn integer_sqrt(val: u64) -> u64 {
-    let mut i = 0;
-    let mut r = 0;
-    while r <= val {
-        r = i * i;
-        i += 1;
-    }
-    i - 1
-}
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Copy, Default)]
 /// The state of the `EcoFuzz` scheduling algorithm
@@ -38,6 +29,10 @@ pub enum EcoState {
 
 /// The testcase Metadata for `EcoScheduler`
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
+#[cfg_attr(
+    any(not(feature = "serdeany_autoreg"), miri),
+    allow(clippy::unsafe_derive_deserialize)
+)] // for SerdeAny
 pub struct EcoTestcaseMetadata {
     mutation_num: u64,
     exec_num: u64,
@@ -49,10 +44,14 @@ pub struct EcoTestcaseMetadata {
     computed_score: f64,
 }
 
-crate::impl_serdeany!(EcoTestcaseMetadata);
+libafl_bolts::impl_serdeany!(EcoTestcaseMetadata);
 
 /// The state Metadata for `EcoScheduler`
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
+#[cfg_attr(
+    any(not(feature = "serdeany_autoreg"), miri),
+    allow(clippy::unsafe_derive_deserialize)
+)] // for SerdeAny
 pub struct EcoMetadata {
     state: EcoState,
     initial_corpus_count: Option<usize>,
@@ -64,7 +63,7 @@ pub struct EcoMetadata {
     regret: f64,
 }
 
-crate::impl_serdeany!(EcoMetadata);
+libafl_bolts::impl_serdeany!(EcoMetadata);
 
 /// A corpus scheduler implementing `EcoFuzz` (`https://www.usenix.org/conference/usenixsecurity20/presentation/yue`)
 #[derive(Clone, Debug)]
@@ -150,6 +149,7 @@ where
             if !was_fuzzed {
                 let selection = Some(id);
                 state.metadata_mut::<EcoMetadata>()?.state = EcoState::Exploration;
+                #[allow(clippy::unnecessary_literal_unwrap)] // false positive
                 return Ok(selection.expect("Error in the algorithm, this cannot be None"));
             }
         }
@@ -215,7 +215,7 @@ where
     S: HasCorpus + HasMetadata + HasRand + HasExecutions + HasTestcase,
     O: MapObserver,
 {
-    /// Add an entry to the corpus and return its index
+    /// Called when a [`Testcase`] is added to the corpus
     #[allow(clippy::cast_precision_loss)]
     fn on_add(&mut self, state: &mut S, idx: CorpusId) -> Result<(), Error> {
         let current_idx = *state.corpus().current();
@@ -282,7 +282,7 @@ where
         let tcmeta = tc.metadata_mut::<EcoTestcaseMetadata>()?;
 
         tcmeta.exec_num = exec_num;
-        tcmeta.serial = state.corpus().count() as u64 + 1;
+        tcmeta.serial = (state.corpus().count() as u64).saturating_add(1);
         Ok(())
     }
 

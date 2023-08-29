@@ -12,6 +12,10 @@ use crate::{
     GuestAddr,
 };
 
+#[cfg_attr(
+    any(not(feature = "serdeany_autoreg"), miri),
+    allow(clippy::unsafe_derive_deserialize)
+)] // for SerdeAny
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct QemuCmpsMapMetadata {
     pub map: HashMap<u64, u64>,
@@ -28,7 +32,7 @@ impl QemuCmpsMapMetadata {
     }
 }
 
-libafl::impl_serdeany!(QemuCmpsMapMetadata);
+libafl_bolts::impl_serdeany!(QemuCmpsMapMetadata);
 
 #[derive(Debug)]
 pub struct QemuCmpLogHelper {

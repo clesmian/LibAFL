@@ -14,6 +14,10 @@ use crate::{
     hooks::QemuHooks,
 };
 
+#[cfg_attr(
+    any(not(feature = "serdeany_autoreg"), miri),
+    allow(clippy::unsafe_derive_deserialize)
+)] // for SerdeAny
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct QemuEdgesMapMetadata {
     pub map: HashMap<(GuestAddr, GuestAddr), u64>,
@@ -30,7 +34,7 @@ impl QemuEdgesMapMetadata {
     }
 }
 
-libafl::impl_serdeany!(QemuEdgesMapMetadata);
+libafl_bolts::impl_serdeany!(QemuEdgesMapMetadata);
 
 #[derive(Debug)]
 pub struct QemuEdgeCoverageHelper {

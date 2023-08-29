@@ -1,15 +1,21 @@
 //! The `MOpt` mutator scheduler, see <https://github.com/puppet-meteor/MOpt-AFL> and <https://www.usenix.org/conference/usenixsecurity19/presentation/lyu>
-use alloc::{string::ToString, vec::Vec};
+use alloc::{
+    string::{String, ToString},
+    vec::Vec,
+};
 use core::{
     fmt::{self, Debug},
     marker::PhantomData,
 };
 
+use libafl_bolts::{
+    rands::{Rand, StdRand},
+    Named,
+};
 use serde::{Deserialize, Serialize};
 
 use super::MutationId;
 use crate::{
-    bolts::rands::{Rand, StdRand},
     corpus::{Corpus, CorpusId},
     mutators::{ComposedByMutations, MutationResult, Mutator, MutatorsTuple, ScheduledMutator},
     state::{HasCorpus, HasMetadata, HasRand, HasSolutions},
@@ -22,6 +28,10 @@ use crate::{
 /// On the other hand, in the core fuzzing mode, the fuzzer chooses the best `swarms`, which was determined during the pilot fuzzing mode, to compute the probability to choose the operation operator.
 /// With the current implementation we are always in the pacemaker fuzzing mode.
 #[derive(Serialize, Deserialize, Clone)]
+#[cfg_attr(
+    any(not(feature = "serdeany_autoreg"), miri),
+    allow(clippy::unsafe_derive_deserialize)
+)] // for SerdeAny
 pub struct MOpt {
     /// Random number generator
     pub rand: StdRand,
@@ -91,7 +101,7 @@ pub struct MOpt {
     pub core_operator_cycles_v3: Vec<u64>,
 }
 
-crate::impl_serdeany!(MOpt);
+libafl_bolts::impl_serdeany!(MOpt);
 
 impl Debug for MOpt {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -365,6 +375,7 @@ where
     MT: MutatorsTuple<I, S>,
     S: HasRand + HasMetadata + HasCorpus + HasSolutions,
 {
+    name: String,
     mode: MOptMode,
     finds_before: usize,
     mutations: MT,
@@ -539,6 +550,7 @@ where
             state.add_metadata::<MOpt>(MOpt::new(mutations.len(), swarm_num, rand_seed)?);
         }
         Ok(Self {
+            name: format!("StdMOptMutator[{}]", mutations.names().join(",")),
             mode: MOptMode::Pilotfuzzing,
             finds_before: 0,
             mutations,
@@ -629,6 +641,16 @@ where
     #[inline]
     fn mutations_mut(&mut self) -> &mut MT {
         &mut self.mutations
+    }
+}
+
+impl<I, MT, S> Named for StdMOptMutator<I, MT, S>
+where
+    MT: MutatorsTuple<I, S>,
+    S: HasRand + HasMetadata + HasCorpus + HasSolutions,
+{
+    fn name(&self) -> &str {
+        &self.name
     }
 }
 

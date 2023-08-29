@@ -3,8 +3,9 @@
 use alloc::{borrow::ToOwned, vec::Vec};
 use core::{cmp::min, mem::size_of, ops::Range};
 
+use libafl_bolts::{rands::Rand, Named};
+
 use crate::{
-    bolts::{rands::Rand, tuples::Named},
     corpus::Corpus,
     inputs::HasBytesVec,
     mutators::{MutationResult, Mutator},
@@ -49,9 +50,7 @@ pub(crate) unsafe fn buffer_copy<T>(dst: &mut [T], src: &[T], from: usize, to: u
 #[inline]
 pub fn buffer_set<T: Clone>(data: &mut [T], from: usize, len: usize, val: T) {
     debug_assert!(from + len <= data.len());
-    for p in &mut data[from..(from + len)] {
-        *p = val.clone();
-    }
+    data[from..(from + len)].fill(val);
 }
 
 /// Generate a range of values where (upon repeated calls) each index is likely to appear in the
@@ -352,7 +351,7 @@ impl ByteRandMutator {
 // within the input are treated as u8, u16, u32, or u64, then mutated in place.
 macro_rules! add_mutator_impl {
     ($name: ident, $size: ty) => {
-        /// Adds or subtracts a random value up to `ARITH_MAX` to a [`<$size>`] at a random place in the [`Vec`], in random byte order.
+        #[doc = concat!("Adds or subtracts a random value up to `ARITH_MAX` to a [`", stringify!($size), "`] at a random place in the [`Vec`], in random byte order.")]
         #[derive(Default, Debug)]
         pub struct $name;
 
@@ -401,7 +400,7 @@ macro_rules! add_mutator_impl {
         }
 
         impl $name {
-            /// Creates a new [`$name`].
+            #[doc = concat!("Creates a new [`", stringify!($name), "`].")]
             #[must_use]
             pub fn new() -> Self {
                 Self
@@ -459,7 +458,7 @@ macro_rules! interesting_mutator_impl {
         }
 
         impl $name {
-            /// Creates a new [`$name`].
+            #[doc = concat!("Creates a new [`", stringify!($name), "`].")]
             #[must_use]
             pub fn new() -> Self {
                 Self
@@ -1243,11 +1242,12 @@ fn locate_diffs(this: &[u8], other: &[u8]) -> (i64, i64) {
     let mut first_diff: i64 = -1;
     let mut last_diff: i64 = -1;
     for (i, (this_el, other_el)) in this.iter().zip(other.iter()).enumerate() {
+        #[allow(clippy::cast_possible_wrap)]
         if this_el != other_el {
             if first_diff < 0 {
-                first_diff = i as i64;
+                first_diff = i64::try_from(i).unwrap();
             }
-            last_diff = i as i64;
+            last_diff = i64::try_from(i).unwrap();
         }
     }
 
@@ -1368,12 +1368,13 @@ pub fn str_decode(item: &str) -> Result<Vec<u8>, Error> {
 
 #[cfg(test)]
 mod tests {
+    use libafl_bolts::{
+        rands::StdRand,
+        tuples::{tuple_list, HasConstLen},
+    };
+
     use super::*;
     use crate::{
-        bolts::{
-            rands::StdRand,
-            tuples::{tuple_list, HasConstLen},
-        },
         corpus::{Corpus, InMemoryCorpus},
         feedbacks::ConstFeedback,
         inputs::BytesInput,

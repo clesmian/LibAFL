@@ -10,15 +10,8 @@ use std::ptr;
 use std::{env, path::PathBuf};
 
 use libafl::{
-    bolts::{
-        current_nanos,
-        rands::StdRand,
-        tuples::{tuple_list, Merge},
-        AsSlice,
-    },
     corpus::{Corpus, InMemoryCorpus, OnDiskCorpus},
-    events::tcp::setup_restarting_mgr_tcp,
-    events::{EventConfig, EventRestarter},
+    events::{tcp::setup_restarting_mgr_tcp, EventConfig, EventRestarter},
     executors::{inprocess::InProcessExecutor, ExitKind, TimeoutExecutor},
     feedback_or, feedback_or_fast,
     feedbacks::{CrashFeedback, MaxMapFeedback, TimeFeedback, TimeoutFeedback},
@@ -37,6 +30,12 @@ use libafl::{
     state::{HasCorpus, HasMetadata, StdState},
     Error,
 };
+use libafl_bolts::{
+    current_nanos,
+    rands::StdRand,
+    tuples::{tuple_list, Merge},
+    AsSlice,
+};
 use libafl_targets::{libfuzzer_initialize, libfuzzer_test_one_input, EDGES_MAP, MAX_EDGES_NUM};
 
 /// The main fn, `no_mangle` as it is a C main
@@ -44,7 +43,7 @@ use libafl_targets::{libfuzzer_initialize, libfuzzer_test_one_input, EDGES_MAP, 
 pub extern "C" fn libafl_main() {
     // Registry the metadata types used in this fuzzer
     // Needed only on no_std
-    //RegistryBuilder::register::<Tokens>();
+    // unsafe { RegistryBuilder::register::<Tokens>(); }
 
     println!(
         "Workdir: {:?}",

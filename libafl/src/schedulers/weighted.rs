@@ -5,10 +5,12 @@ use alloc::string::{String, ToString};
 use core::marker::PhantomData;
 
 use hashbrown::HashMap;
+use libafl_bolts::rands::Rand;
 use serde::{Deserialize, Serialize};
 
+#[cfg(doc)]
+use crate::corpus::Testcase;
 use crate::{
-    bolts::rands::Rand,
     corpus::{Corpus, CorpusId, HasTestcase, SchedulerTestcaseMetadata},
     inputs::UsesInput,
     observers::{MapObserver, ObserversTuple},
@@ -22,9 +24,12 @@ use crate::{
     Error,
 };
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
-
 /// The Metadata for `WeightedScheduler`
+#[cfg_attr(
+    any(not(feature = "serdeany_autoreg"), miri),
+    allow(clippy::unsafe_derive_deserialize)
+)] // for SerdeAny
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct WeightedScheduleMetadata {
     /// The fuzzer execution spent in the current cycles
     runs_in_current_cycle: usize,
@@ -85,7 +90,7 @@ impl WeightedScheduleMetadata {
     }
 }
 
-crate::impl_serdeany!(WeightedScheduleMetadata);
+libafl_bolts::impl_serdeany!(WeightedScheduleMetadata);
 
 /// A corpus scheduler using power schedules with weighted queue item selection algo.
 #[derive(Clone, Debug)]
@@ -159,7 +164,7 @@ where
             sum += weight;
         }
 
-        for (i, w) in weights.iter() {
+        for (i, w) in &weights {
             p_arr.insert(*i, w * (n as f64) / sum);
         }
 
@@ -302,7 +307,7 @@ where
     O: MapObserver,
     S: HasCorpus + HasMetadata + HasRand + HasTestcase,
 {
-    /// Add an entry to the corpus and return its index
+    /// Called when a [`Testcase`] is added to the corpus
     fn on_add(&mut self, state: &mut S, idx: CorpusId) -> Result<(), Error> {
         let current_idx = *state.corpus().current();
 

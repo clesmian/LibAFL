@@ -13,14 +13,6 @@ use std::{
 
 use clap::{Arg, Command};
 use libafl::{
-    bolts::{
-        current_nanos, current_time,
-        os::dup2,
-        rands::StdRand,
-        shmem::{ShMemProvider, StdShMemProvider},
-        tuples::{tuple_list, Merge},
-        AsSlice,
-    },
     corpus::{Corpus, InMemoryOnDiskCorpus, OnDiskCorpus},
     events::SimpleRestartingEventManager,
     executors::{ExitKind, ShadowExecutor, TimeoutExecutor},
@@ -44,6 +36,14 @@ use libafl::{
     state::{HasCorpus, HasMetadata, StdState},
     Error,
 };
+use libafl_bolts::{
+    current_nanos, current_time,
+    os::dup2,
+    rands::StdRand,
+    shmem::{ShMemProvider, StdShMemProvider},
+    tuples::{tuple_list, Merge},
+    AsSlice,
+};
 use libafl_qemu::{
     cmplog::{CmpLogObserver, QemuCmpLogHelper},
     //asan::{init_with_asan, QemuAsanHelper},
@@ -54,6 +54,7 @@ use libafl_qemu::{
     emu::Emulator,
     filter_qemu_args,
     hooks::QemuHooks,
+    GuestReg,
     //snapshot::QemuSnapshotHelper,
     MmapPerms,
     QemuExecutor,
@@ -68,7 +69,7 @@ pub const MAX_INPUT_SIZE: usize = 1048576; // 1MB
 pub fn main() {
     // Registry the metadata types used in this fuzzer
     // Needed only on no_std
-    //RegistryBuilder::register::<Tokens>();
+    // unsafe { RegistryBuilder::register::<Tokens>(); }
 
     let res = match Command::new(env!("CARGO_PKG_NAME"))
         .version(env!("CARGO_PKG_VERSION"))
@@ -330,7 +331,7 @@ fn fuzz(
             emu.write_mem(input_addr, buf);
 
             emu.write_reg(Regs::Rdi, input_addr).unwrap();
-            emu.write_reg(Regs::Rsi, len).unwrap();
+            emu.write_reg(Regs::Rsi, len as GuestReg).unwrap();
             emu.write_reg(Regs::Rip, test_one_input_ptr).unwrap();
             emu.write_reg(Regs::Rsp, stack_ptr).unwrap();
 

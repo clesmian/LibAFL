@@ -12,11 +12,11 @@ use core::{
     ops::{BitAnd, BitOr},
 };
 
+use libafl_bolts::{AsIter, AsMutSlice, AsSlice, HasRefCnt, Named};
 use num_traits::PrimInt;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
 use crate::{
-    bolts::{tuples::Named, AsIter, AsMutSlice, AsSlice, HasRefCnt},
     corpus::Testcase,
     events::{Event, EventFirer},
     executors::ExitKind,
@@ -207,7 +207,7 @@ where
     }
 }
 
-/// A filter that only saves values which are at least the next pow2 class
+/// Only consider `T::one()` or `T::max_value()`, if they are bigger than the old value, as novel
 #[derive(Clone, Debug)]
 pub struct OneOrFilledIsNovel {}
 impl<T> IsNovel<T> for OneOrFilledIsNovel
@@ -222,6 +222,10 @@ where
 
 /// A testcase metadata holding a list of indexes of a map
 #[derive(Debug, Serialize, Deserialize)]
+#[cfg_attr(
+    any(not(feature = "serdeany_autoreg"), miri),
+    allow(clippy::unsafe_derive_deserialize)
+)] // for SerdeAny
 pub struct MapIndexesMetadata {
     /// The list of indexes.
     pub list: Vec<usize>,
@@ -229,7 +233,7 @@ pub struct MapIndexesMetadata {
     pub tcref: isize,
 }
 
-crate::impl_serdeany!(MapIndexesMetadata);
+libafl_bolts::impl_serdeany!(MapIndexesMetadata);
 
 impl AsSlice for MapIndexesMetadata {
     type Entry = usize;
@@ -266,12 +270,16 @@ impl MapIndexesMetadata {
 
 /// A testcase metadata holding a list of indexes of a map
 #[derive(Debug, Serialize, Deserialize)]
+#[cfg_attr(
+    any(not(feature = "serdeany_autoreg"), miri),
+    allow(clippy::unsafe_derive_deserialize)
+)] // for SerdeAny
 pub struct MapNoveltiesMetadata {
     /// A `list` of novelties.
     pub list: Vec<usize>,
 }
 
-crate::impl_serdeany!(MapNoveltiesMetadata);
+libafl_bolts::impl_serdeany!(MapNoveltiesMetadata);
 
 impl AsSlice for MapNoveltiesMetadata {
     type Entry = usize;
@@ -300,6 +308,10 @@ impl MapNoveltiesMetadata {
 /// The state of [`MapFeedback`]
 #[derive(Default, Serialize, Deserialize, Clone, Debug)]
 #[serde(bound = "T: DeserializeOwned")]
+#[cfg_attr(
+    any(not(feature = "serdeany_autoreg"), miri),
+    allow(clippy::unsafe_derive_deserialize)
+)] // for SerdeAny
 pub struct MapFeedbackMetadata<T>
 where
     T: Default + Copy + 'static + Serialize,
@@ -308,9 +320,9 @@ where
     pub history_map: Vec<T>,
 }
 
-crate::impl_serdeany!(
+libafl_bolts::impl_serdeany!(
     MapFeedbackMetadata<T: Debug + Default + Copy + 'static + Serialize + DeserializeOwned>,
-    <u8>,<u16>,<u32>,<u64>,<i8>,<i16>,<i32>,<i64>,<f32>,<f64>,<bool>,<char>
+    <u8>,<u16>,<u32>,<u64>,<i8>,<i16>,<i32>,<i64>,<f32>,<f64>,<bool>,<char>,<usize>
 );
 
 impl<T> MapFeedbackMetadata<T>
@@ -446,6 +458,10 @@ where
             .named_metadata_map_mut()
             .get_mut::<MapFeedbackMetadata<T>>(&self.name)
             .unwrap();
+        let len = observer.len();
+        if map_state.history_map.len() < len {
+            map_state.history_map.resize(len, observer.initial());
+        }
 
         // History map may be smaller, if is_interesting has not been called on the observer before
         let len = observer.len();

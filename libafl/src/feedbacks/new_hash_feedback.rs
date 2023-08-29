@@ -4,10 +4,10 @@ use alloc::string::{String, ToString};
 use std::{fmt::Debug, marker::PhantomData};
 
 use hashbrown::HashSet;
+use libafl_bolts::Named;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    bolts::tuples::Named,
     events::EventFirer,
     executors::ExitKind,
     feedbacks::{Feedback, HasObserverName},
@@ -30,13 +30,14 @@ pub trait HashSetState<T> {
 
 /// The state of [`NewHashFeedback`]
 #[derive(Default, Serialize, Deserialize, Clone, Debug)]
+#[allow(clippy::unsafe_derive_deserialize)]
 pub struct NewHashFeedbackMetadata {
     /// Contains information about untouched entries
     pub hash_set: HashSet<u64>,
 }
 
 #[rustfmt::skip]
-crate::impl_serdeany!(NewHashFeedbackMetadata);
+libafl_bolts::impl_serdeany!(NewHashFeedbackMetadata);
 
 impl NewHashFeedbackMetadata {
     /// Create a new [`NewHashFeedbackMetadata`]

@@ -6,16 +6,16 @@ use core::{
     marker::PhantomData,
 };
 
+use libafl_bolts::{
+    rands::Rand,
+    tuples::{tuple_list, tuple_list_type, Merge, NamedTuple},
+    AsMutSlice, AsSlice, Named,
+};
 use serde::{Deserialize, Serialize};
 
 use super::MutationId;
 pub use crate::mutators::{mutations::*, token_mutations::*};
 use crate::{
-    bolts::{
-        rands::Rand,
-        tuples::{tuple_list, tuple_list_type, NamedTuple},
-        AsMutSlice, AsSlice,
-    },
     corpus::{Corpus, CorpusId},
     mutators::{MutationResult, Mutator, MutatorsTuple},
     state::{HasCorpus, HasMetadata, HasRand},
@@ -24,12 +24,16 @@ use crate::{
 
 /// The metadata placed in a [`crate::corpus::Testcase`] by a [`LoggerScheduledMutator`].
 #[derive(Debug, Serialize, Deserialize)]
+#[cfg_attr(
+    any(not(feature = "serdeany_autoreg"), miri),
+    allow(clippy::unsafe_derive_deserialize)
+)] // for SerdeAny
 pub struct LogMutationMetadata {
     /// A list of logs
     pub list: Vec<String>,
 }
 
-crate::impl_serdeany!(LogMutationMetadata);
+libafl_bolts::impl_serdeany!(LogMutationMetadata);
 
 impl AsSlice for LogMutationMetadata {
     type Entry = String;
@@ -106,6 +110,7 @@ where
     MT: MutatorsTuple<I, S>,
     S: HasRand,
 {
+    name: String,
     mutations: MT,
     max_stack_pow: u64,
     phantom: PhantomData<(I, S)>,
@@ -123,6 +128,16 @@ where
             self.mutations.len(),
             core::any::type_name::<I>()
         )
+    }
+}
+
+impl<I, MT, S> Named for StdScheduledMutator<I, MT, S>
+where
+    MT: MutatorsTuple<I, S>,
+    S: HasRand,
+{
+    fn name(&self) -> &str {
+        &self.name
     }
 }
 
@@ -185,6 +200,7 @@ where
     /// Create a new [`StdScheduledMutator`] instance specifying mutations
     pub fn new(mutations: MT) -> Self {
         StdScheduledMutator {
+            name: format!("StdScheduledMutator[{}]", mutations.names().join(", ")),
             mutations,
             max_stack_pow: 7,
             phantom: PhantomData,
@@ -194,12 +210,45 @@ where
     /// Create a new [`StdScheduledMutator`] instance specifying mutations and the maximun number of iterations
     pub fn with_max_stack_pow(mutations: MT, max_stack_pow: u64) -> Self {
         StdScheduledMutator {
+            name: format!("StdScheduledMutator[{}]", mutations.names().join(", ")),
             mutations,
             max_stack_pow,
             phantom: PhantomData,
         }
     }
 }
+
+/// Tuple type of the mutations that compose the Havoc mutator without crossover mutations
+pub type HavocMutationsNoCrossoverType = tuple_list_type!(
+    BitFlipMutator,
+    ByteFlipMutator,
+    ByteIncMutator,
+    ByteDecMutator,
+    ByteNegMutator,
+    ByteRandMutator,
+    ByteAddMutator,
+    WordAddMutator,
+    DwordAddMutator,
+    QwordAddMutator,
+    ByteInterestingMutator,
+    WordInterestingMutator,
+    DwordInterestingMutator,
+    BytesDeleteMutator,
+    BytesDeleteMutator,
+    BytesDeleteMutator,
+    BytesDeleteMutator,
+    BytesExpandMutator,
+    BytesInsertMutator,
+    BytesRandInsertMutator,
+    BytesSetMutator,
+    BytesRandSetMutator,
+    BytesCopyMutator,
+    BytesInsertCopyMutator,
+    BytesSwapMutator,
+);
+
+/// Tuple type of the mutations that compose the Havoc mutator's crossover mutations
+pub type HavocCrossoverType = tuple_list_type!(CrossoverInsertMutator, CrossoverReplaceMutator);
 
 /// Tuple type of the mutations that compose the Havoc mutator
 pub type HavocMutationsType = tuple_list_type!(
@@ -232,9 +281,9 @@ pub type HavocMutationsType = tuple_list_type!(
     CrossoverReplaceMutator,
 );
 
-/// Get the mutations that compose the Havoc mutator
+/// Get the mutations that compose the Havoc mutator (only applied to single inputs)
 #[must_use]
-pub fn havoc_mutations() -> HavocMutationsType {
+pub fn havoc_mutations_no_crossover() -> HavocMutationsNoCrossoverType {
     tuple_list!(
         BitFlipMutator::new(),
         ByteFlipMutator::new(),
@@ -261,9 +310,22 @@ pub fn havoc_mutations() -> HavocMutationsType {
         BytesCopyMutator::new(),
         BytesInsertCopyMutator::new(),
         BytesSwapMutator::new(),
+    )
+}
+
+/// Get the mutations that compose the Havoc mutator's crossover strategy
+#[must_use]
+pub fn havoc_crossover() -> HavocCrossoverType {
+    tuple_list!(
         CrossoverInsertMutator::new(),
         CrossoverReplaceMutator::new(),
     )
+}
+
+/// Get the mutations that compose the Havoc mutator
+#[must_use]
+pub fn havoc_mutations() -> HavocMutationsType {
+    havoc_mutations_no_crossover().merge(havoc_crossover())
 }
 
 /// Get the mutations that uses the Tokens metadata
@@ -279,6 +341,7 @@ where
     S: HasRand + HasCorpus,
     SM: ScheduledMutator<I, MT, S>,
 {
+    name: String,
     scheduled: SM,
     mutation_log: Vec<MutationId>,
     phantom: PhantomData<(I, MT, S)>,
@@ -297,6 +360,17 @@ where
             self.scheduled.mutations().len(),
             core::any::type_name::<I>()
         )
+    }
+}
+
+impl<I, MT, S, SM> Named for LoggerScheduledMutator<I, MT, S, SM>
+where
+    MT: MutatorsTuple<I, S> + NamedTuple,
+    S: HasRand + HasCorpus,
+    SM: ScheduledMutator<I, MT, S>,
+{
+    fn name(&self) -> &str {
+        &self.name
     }
 }
 
@@ -403,9 +477,11 @@ where
     S: HasRand + HasCorpus,
     SM: ScheduledMutator<I, MT, S>,
 {
-    /// Create a new [`StdScheduledMutator`] instance without mutations and corpus
+    /// Create a new [`LoggerScheduledMutator`] instance without mutations and corpus
+    /// This mutator logs all mutators.
     pub fn new(scheduled: SM) -> Self {
         Self {
+            name: format!("LoggerScheduledMutator[{}]", scheduled.name()),
             scheduled,
             mutation_log: vec![],
             phantom: PhantomData,
@@ -415,8 +491,9 @@ where
 
 #[cfg(test)]
 mod tests {
+    use libafl_bolts::rands::{Rand, StdRand, XkcdRand};
+
     use crate::{
-        bolts::rands::{Rand, StdRand, XkcdRand},
         corpus::{Corpus, InMemoryCorpus, Testcase},
         feedbacks::ConstFeedback,
         inputs::{BytesInput, HasBytesVec},

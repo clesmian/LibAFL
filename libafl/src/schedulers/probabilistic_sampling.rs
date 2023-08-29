@@ -5,10 +5,10 @@ use alloc::string::String;
 use core::marker::PhantomData;
 
 use hashbrown::HashMap;
+use libafl_bolts::rands::Rand;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    bolts::rands::Rand,
     corpus::{Corpus, CorpusId, HasTestcase},
     inputs::UsesInput,
     schedulers::{Scheduler, TestcaseScore},
@@ -27,6 +27,10 @@ where
 
 /// A state metadata holding a map of probability of corpus elements.
 #[derive(Debug, Serialize, Deserialize)]
+#[cfg_attr(
+    any(not(feature = "serdeany_autoreg"), miri),
+    allow(clippy::unsafe_derive_deserialize)
+)] // for SerdeAny
 pub struct ProbabilityMetadata {
     /// corpus index -> probability
     pub map: HashMap<CorpusId, f64>,
@@ -34,7 +38,7 @@ pub struct ProbabilityMetadata {
     pub total_probability: f64,
 }
 
-crate::impl_serdeany!(ProbabilityMetadata);
+libafl_bolts::impl_serdeany!(ProbabilityMetadata);
 
 impl ProbabilityMetadata {
     /// Creates a new [`struct@ProbabilityMetadata`]
@@ -124,7 +128,7 @@ where
             let threshold = meta.total_probability * rand_prob;
             let mut k: f64 = 0.0;
             let mut ret = *meta.map.keys().last().unwrap();
-            for (idx, prob) in meta.map.iter() {
+            for (idx, prob) in &meta.map {
                 k += prob;
                 if k >= threshold {
                     ret = *idx;
@@ -152,8 +156,9 @@ where
 mod tests {
     use core::{borrow::BorrowMut, marker::PhantomData};
 
+    use libafl_bolts::rands::StdRand;
+
     use crate::{
-        bolts::rands::StdRand,
         corpus::{Corpus, InMemoryCorpus, Testcase},
         feedbacks::ConstFeedback,
         inputs::{bytes::BytesInput, Input, UsesInput},
@@ -186,6 +191,11 @@ mod tests {
 
     #[test]
     fn test_prob_sampling() {
+        #[cfg(any(not(feature = "serdeany_autoreg"), miri))]
+        unsafe {
+            super::ProbabilityMetadata::register();
+        }
+
         // the first 3 probabilities will be .69, .86, .44
         let rand = StdRand::with_seed(12);
 

@@ -4,13 +4,15 @@ use std::{
     io::{BufReader, Write},
     path::{Path, PathBuf},
     rc::Rc,
+    sync::OnceLock,
 };
 
 use clap::{self, Parser};
-use lazy_static::lazy_static;
 use libafl::generators::gramatron::{Automaton, Trigger};
 use regex::Regex;
 use serde_json::Value;
+
+static RE: OnceLock<Regex> = OnceLock::new();
 
 #[derive(Debug, Parser)]
 #[command(
@@ -69,10 +71,8 @@ struct Stacks {
 }
 
 fn tokenize(rule: &str) -> (String, Vec<String>, bool) {
-    lazy_static! {
-        static ref RE: Regex = Regex::new(r"([r])*'([\s\S]+)'([\s\S]*)").unwrap();
-    }
-    let cap = RE.captures(rule).unwrap();
+    let re = RE.get_or_init(|| Regex::new(r"([r])*'([\s\S]+)'([\s\S]*)").unwrap());
+    let cap = re.captures(rule).unwrap();
     let is_regex = cap.get(1).is_some();
     let terminal = cap.get(2).unwrap().as_str().to_owned();
     let ss = cap.get(3).map_or(vec![], |m| {
@@ -208,7 +208,7 @@ fn postprocess(pda: &[Transition], stack_limit: usize) -> Automaton {
         //let mut culled_pda_unique = HashSet::new();
 
         for final_state in &finals {
-            for transition in pda.iter() {
+            for transition in pda {
                 if transition.dest == *final_state && transition.stack.len() > 0 {
                     blocklist.insert(transition.dest);
                 } else {
@@ -267,7 +267,7 @@ fn postprocess(pda: &[Transition], stack_limit: usize) -> Automaton {
         }
     } else {
         // Running FSA construction in exact approximation mode and postprocessing it like so
-        for transition in pda.iter() {
+        for transition in pda {
             num_transition += 1;
             let state = transition.source;
             if state >= memoized.len() {
