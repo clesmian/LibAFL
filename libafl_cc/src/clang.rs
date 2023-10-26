@@ -47,6 +47,8 @@ pub enum LLVMPasses {
     #[cfg(unix)]
     /// The CmpLog Switch pass
     CmpLogSwitches,
+    /// The StorFuzz pass
+    StorFuzzCoverage,
 }
 
 impl LLVMPasses {
@@ -58,6 +60,8 @@ impl LLVMPasses {
                 .join(format!("cmplog-routines-pass.{}", dll_extension())),
             LLVMPasses::AFLCoverage => PathBuf::from(env!("OUT_DIR"))
                 .join(format!("afl-coverage-pass.{}", dll_extension())),
+            LLVMPasses::StorFuzzCoverage => PathBuf::from(env!("OUT_DIR"))
+                .join(format!("storfuzz-coverage-pass.{}", dll_extension())),
             LLVMPasses::AutoTokens => {
                 PathBuf::from(env!("OUT_DIR")).join(format!("autotokens-pass.{}", dll_extension()))
             }

@@ -305,6 +305,12 @@ pub const LIBAFL_CC_LLVM_VERSION: Option<usize> = None;
         .expect("Could not parse LIBAFL_EDGES_MAP_SIZE");
     cxxflags.push(format!("-DLIBAFL_EDGES_MAP_SIZE={edges_map_size}"));
 
+
+    let storfuzz_map_size: usize = option_env!("STORFUZZ_MAP_SIZE")
+        .map_or(Ok(1 << 17), str::parse)
+        .expect("Could not parse STORFUZZ_MAP_SIZE");
+    cxxflags.push(format!("-DSTORFUZZ_MAP_SIZE={storfuzz_map_size}"));
+
     let acc_map_size: usize = option_env!("LIBAFL_ACCOUNTING_MAP_SIZE")
         .map_or(Ok(65536), str::parse)
         .expect("Could not parse LIBAFL_ACCOUNTING_MAP_SIZE");
@@ -395,6 +401,7 @@ pub const LIBAFL_CC_LLVM_VERSION: Option<usize> = None;
     for pass in &[
         "cmplog-routines-pass.cc",
         "afl-coverage-pass.cc",
+        "storfuzz-coverage-pass.cc",
         "autotokens-pass.cc",
         "coverage-accounting-pass.cc",
         "cmplog-instructions-pass.cc",
