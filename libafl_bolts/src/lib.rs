@@ -3,7 +3,7 @@
 */
 #![doc = include_str!("../README.md")]
 /*! */
-#![doc = document_features::document_features!()]
+#![cfg_attr(feature = "document-features", doc = document_features::document_features!())]
 #![allow(incomplete_features)]
 #![no_std]
 // For `type_eq`
@@ -28,7 +28,8 @@
     clippy::missing_panics_doc,
     clippy::missing_docs_in_private_items,
     clippy::module_name_repetitions,
-    clippy::ptr_cast_constness
+    clippy::ptr_cast_constness,
+    clippy::negative_feature_names
 )]
 #![cfg_attr(not(test), warn(
     missing_debug_implementations,
@@ -62,7 +63,6 @@
         overflowing_literals,
         path_statements,
         patterns_in_fns_without_body,
-        private_in_public,
         unconditional_recursion,
         unused,
         unused_allocation,
@@ -130,15 +130,27 @@ pub mod serdeany;
 pub mod shmem;
 #[cfg(feature = "std")]
 pub mod staterestore;
+// TODO: reenable once ahash works in no-alloc
+#[cfg(any(feature = "xxh3", feature = "alloc"))]
 pub mod tuples;
 
 #[cfg(feature = "alloc")]
 use alloc::vec::Vec;
+#[cfg(all(not(feature = "xxh3"), feature = "alloc"))]
+use core::hash::BuildHasher;
+#[cfg(any(feature = "xxh3", feature = "alloc"))]
+use core::hash::Hasher;
 use core::{iter::Iterator, time};
 #[cfg(feature = "std")]
 use std::time::{SystemTime, UNIX_EPOCH};
 
+// There's a bug in ahash that doesn't let it build in `alloc` without once_cell right now.
+// TODO: re-enable once <https://github.com/tkaitchuck/aHash/issues/155> is resolved.
+#[cfg(all(not(feature = "xxh3"), feature = "alloc"))]
+use ahash::RandomState;
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "xxh3")]
+use xxhash_rust::xxh3::xxh3_64;
 
 /// The client ID == the sender id.
 #[repr(transparent)]
@@ -207,6 +219,34 @@ fn display_error_backtrace(f: &mut fmt::Formatter, err: &ErrorBacktrace) -> fmt:
 #[allow(clippy::unnecessary_wraps)]
 fn display_error_backtrace(_f: &mut fmt::Formatter, _err: &ErrorBacktrace) -> fmt::Result {
     fmt::Result::Ok(())
+}
+
+/// Returns the hasher for the input with a given hash, depending on features:
+/// [`xxh3_64`](https://docs.rs/xxhash-rust/latest/xxhash_rust/xxh3/fn.xxh3_64.html)
+/// if the `xxh3` feature is used, /// else [`ahash`](https://docs.rs/ahash/latest/ahash/).
+#[cfg(any(feature = "xxh3", feature = "alloc"))]
+#[must_use]
+pub fn hasher_std() -> impl Hasher + Clone {
+    #[cfg(feature = "xxh3")]
+    return xxhash_rust::xxh3::Xxh3::new();
+    #[cfg(not(feature = "xxh3"))]
+    RandomState::with_seeds(0, 0, 0, 0).build_hasher()
+}
+
+/// Hashes the input with a given hash, depending on features:
+/// [`xxh3_64`](https://docs.rs/xxhash-rust/latest/xxhash_rust/xxh3/fn.xxh3_64.html)
+/// if the `xxh3` feature is used, /// else [`ahash`](https://docs.rs/ahash/latest/ahash/).
+#[cfg(any(feature = "xxh3", feature = "alloc"))]
+#[must_use]
+pub fn hash_std(input: &[u8]) -> u64 {
+    #[cfg(feature = "xxh3")]
+    return xxh3_64(input);
+    #[cfg(not(feature = "xxh3"))]
+    {
+        let mut hasher = hasher_std();
+        hasher.write(input);
+        hasher.finish()
+    }
 }
 
 /// Main error struct for `LibAFL`
@@ -516,6 +556,17 @@ pub unsafe extern "C" fn external_current_millis() -> u64 {
     1000
 }
 
+/// Trait to convert into an Owned type
+pub trait IntoOwned {
+    /// Returns if the current type is an owned type.
+    #[must_use]
+    fn is_owned(&self) -> bool;
+
+    /// Transfer the current type into an owned type.
+    #[must_use]
+    fn into_owned(self) -> Self;
+}
+
 /// Can be converted to a slice
 pub trait AsSlice {
     /// Type of the entries in this slice
@@ -686,7 +737,7 @@ pub static LIBAFL_STDERR_LOGGER: SimpleStderrLogger = SimpleStderrLogger::new();
 #[cfg(feature = "std")]
 pub static LIBAFL_STDOUT_LOGGER: SimpleStdoutLogger = SimpleStdoutLogger::new();
 
-/// A simple logger struct that logs to stderr when used with [`log::set_logger`].
+/// A simple logger struct that logs to stdout when used with [`log::set_logger`].
 #[derive(Debug)]
 #[cfg(feature = "std")]
 pub struct SimpleStdoutLogger {}
@@ -799,7 +850,7 @@ pub mod bolts_prelude {
     pub use super::staterestore::*;
     #[cfg(feature = "alloc")]
     pub use super::{anymap::*, llmp::*, ownedref::*, rands::*, serdeany::*, shmem::*, tuples::*};
-    pub use super::{cpu::*, os::*, rands::*};
+    pub use super::{cpu::*, os::*};
 }
 
 #[cfg(feature = "python")]

@@ -3,7 +3,7 @@ Welcome to `LibAFL`
 */
 #![doc = include_str!("../README.md")]
 /*! */
-#![doc = document_features::document_features!()]
+#![cfg_attr(feature = "document-features", doc = document_features::document_features!())]
 #![allow(incomplete_features)]
 #![no_std]
 // For `type_eq`
@@ -61,7 +61,6 @@ Welcome to `LibAFL`
         overflowing_literals,
         path_statements,
         patterns_in_fns_without_body,
-        private_in_public,
         unconditional_recursion,
         unused,
         unused_allocation,

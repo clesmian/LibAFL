@@ -4,12 +4,11 @@ fn main() {
     if cfg!(any(feature = "cargo-clippy", docsrs)) {
         return; // skip when clippy or docs is running
     }
-    if cfg!(not(target_os = "linux")) {
-        println!(
-            "cargo:error=The libafl_libfuzzer runtime may only be built for linux; failing fast."
-        );
-        return;
-    }
+    assert!(
+        cfg!(target_os = "linux"),
+        "The libafl_libfuzzer runtime may only be built for linux; failing fast."
+    );
+
     println!("cargo:rerun-if-changed=libafl_libfuzzer_runtime/src");
     println!("cargo:rerun-if-changed=libafl_libfuzzer_runtime/Cargo.toml");
     println!("cargo:rerun-if-changed=libafl_libfuzzer_runtime/build.rs");
@@ -37,9 +36,11 @@ fn main() {
         .env("PATH", std::env::var_os("PATH").unwrap())
         .current_dir(&lib_src);
 
+    let _ = std::fs::rename(lib_src.join("Cargo.toml.orig"), lib_src.join("Cargo.toml"));
+
     command.arg("build");
 
-    let mut features = vec!["serdeany_autoreg"];
+    let mut features = vec![];
 
     if cfg!(any(feature = "fork")) {
         features.push("fork");
@@ -48,13 +49,15 @@ fn main() {
         features.push("libafl/introspection");
     }
 
+    if features.is_empty() {
+        command.arg("--features").arg(features.join(","));
+    }
+
     command
         .arg("--release")
         .arg("--no-default-features")
         .arg("--target-dir")
         .arg(&custom_lib_dir)
-        .arg("--features")
-        .arg(features.join(","))
         .arg("--target")
         .arg(std::env::var_os("TARGET").unwrap());
 
@@ -65,6 +68,16 @@ fn main() {
 
     let mut lib_path = custom_lib_dir.join(std::env::var_os("TARGET").unwrap());
     lib_path.push("release");
+
+    #[cfg(all(feature = "embed-runtime", target_family = "unix"))]
+    {
+        // NOTE: lib, .a are added always on unix-like systems as described in:
+        // https://gist.github.com/novafacing/1389cbb2f0a362d7eb103e67b4468e2b
+        println!(
+            "cargo:rustc-env=LIBAFL_LIBFUZZER_RUNTIME_PATH={}",
+            lib_path.join("libafl_libfuzzer_runtime.a").display()
+        );
+    }
 
     println!(
         "cargo:rustc-link-search=native={}",

@@ -1,4 +1,4 @@
-//! [`LLVM` `8-bi-counters`](https://clang.llvm.org/docs/SanitizerCoverage.html#tracing-pcs-with-guards) runtime for `LibAFL`.
+//! [`LLVM` `8-bit-counters`](https://clang.llvm.org/docs/SanitizerCoverage.html#tracing-pcs-with-guards) runtime for `LibAFL`.
 use alloc::vec::Vec;
 
 use libafl_bolts::{ownedref::OwnedMutSlice, AsMutSlice, AsSlice};
@@ -337,6 +337,20 @@ mod observers {
 
         fn into_iter(self) -> Self::IntoIter {
             unsafe { &mut COUNTERS_MAPS }.iter_mut().flatten()
+        }
+    }
+
+    impl<const DIFFERENTIAL: bool> CountersMultiMapObserver<DIFFERENTIAL> {
+        /// Returns an iterator over the map.
+        #[must_use]
+        pub fn iter(&self) -> <&Self as IntoIterator>::IntoIter {
+            <&Self as IntoIterator>::into_iter(self)
+        }
+
+        /// Returns a mutable iterator over the map.
+        #[must_use]
+        pub fn iter_mut(&mut self) -> <&mut Self as IntoIterator>::IntoIter {
+            <&mut Self as IntoIterator>::into_iter(self)
         }
     }
 

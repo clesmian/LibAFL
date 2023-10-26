@@ -7,20 +7,23 @@ use core::{
     mem::MaybeUninit,
     ptr::{addr_of, copy_nonoverlapping, null},
 };
-use std::{cell::OnceCell, slice::from_raw_parts, str::from_utf8_unchecked};
+#[cfg(emulation_mode = "usermode")]
+use std::cell::OnceCell;
 #[cfg(emulation_mode = "systemmode")]
 use std::{
     ffi::{CStr, CString},
     ptr::null_mut,
 };
+use std::{slice::from_raw_parts, str::from_utf8_unchecked};
 
 #[cfg(emulation_mode = "usermode")]
 use libc::c_int;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 use num_traits::Num;
+use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 
-use crate::GuestReg;
+use crate::{GuestReg, Regs};
 
 pub type GuestAddr = libafl_qemu_sys::target_ulong;
 pub type GuestUsize = libafl_qemu_sys::target_ulong;
@@ -314,6 +317,8 @@ extern "C" {
         unsafe extern "C" fn(i32, u64, u64, u64, u64, u64, u64, u64, u64) -> SyscallHookResult;
     static mut libafl_post_syscall_hook:
         unsafe extern "C" fn(u64, i32, u64, u64, u64, u64, u64, u64, u64, u64) -> u64;
+
+    static mut libafl_dump_core_hook: unsafe extern "C" fn(i32);
 }
 
 #[cfg(emulation_mode = "systemmode")]
@@ -727,14 +732,22 @@ impl CPU {
     pub fn save_state(&self) -> CPUArchState {
         unsafe {
             let mut saved = MaybeUninit::<CPUArchState>::uninit();
-            copy_nonoverlapping(self.ptr.as_mut().unwrap().env_ptr, saved.as_mut_ptr(), 1);
+            copy_nonoverlapping(
+                libafl_qemu_sys::cpu_env(self.ptr.as_mut().unwrap()),
+                saved.as_mut_ptr(),
+                1,
+            );
             saved.assume_init()
         }
     }
 
     pub fn restore_state(&self, saved: &CPUArchState) {
         unsafe {
-            copy_nonoverlapping(saved, self.ptr.as_mut().unwrap().env_ptr, 1);
+            copy_nonoverlapping(
+                saved,
+                libafl_qemu_sys::cpu_env(self.ptr.as_mut().unwrap()),
+                1,
+            );
         }
     }
 
@@ -763,6 +776,27 @@ impl CPU {
         {
             unsafe { libafl_qemu_sys::qemu_target_page_size() }
         }
+    }
+
+    #[must_use]
+    pub fn display_context(&self) -> String {
+        let mut display = String::new();
+        let mut maxl = 0;
+        for r in Regs::iter() {
+            maxl = std::cmp::max(format!("{r:#?}").len(), maxl);
+        }
+        for (i, r) in Regs::iter().enumerate() {
+            let v: GuestAddr = self.read_reg(r).unwrap();
+            let sr = format!("{r:#?}");
+            display += &format!("{sr:>maxl$}: {v:#016x} ");
+            if (i + 1) % 4 == 0 {
+                display += "\n";
+            }
+        }
+        if !display.ends_with('\n') {
+            display += "\n";
+        }
+        display
     }
 }
 
@@ -979,6 +1013,14 @@ impl Emulator {
         unsafe {
             libafl_qemu_remove_breakpoint(addr.into());
         }
+    }
+
+    pub fn entry_break(&self, addr: GuestAddr) {
+        self.set_breakpoint(addr);
+        unsafe {
+            self.run();
+        }
+        self.remove_breakpoint(addr);
     }
 
     pub fn set_hook(
@@ -1292,6 +1334,14 @@ impl Emulator {
     pub fn gdb_reply(&self, output: &str) {
         unsafe { libafl_qemu_gdb_reply(output.as_bytes().as_ptr(), output.len()) };
     }
+
+    #[cfg(emulation_mode = "usermode")]
+    #[allow(clippy::type_complexity)]
+    pub fn set_crash_hook(&self, callback: extern "C" fn(i32)) {
+        unsafe {
+            libafl_dump_core_hook = callback;
+        }
+    }
 }
 
 impl ArchExtras for Emulator {
@@ -1425,6 +1475,10 @@ pub mod pybind {
 
         fn set_breakpoint(&self, addr: GuestAddr) {
             self.emu.set_breakpoint(addr);
+        }
+
+        fn entry_break(&self, addr: GuestAddr) {
+            self.emu.entry_break(addr);
         }
 
         fn remove_breakpoint(&self, addr: GuestAddr) {

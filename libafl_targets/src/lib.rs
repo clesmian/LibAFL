@@ -50,7 +50,6 @@
         overflowing_literals,
         path_statements,
         patterns_in_fns_without_body,
-        private_in_public,
         unconditional_recursion,
         unused,
         unused_allocation,
@@ -109,8 +108,9 @@ pub use coverage::*;
 pub mod value_profile;
 pub use value_profile::*;
 
-pub mod cmplog;
-pub use cmplog::*;
+/// runtime related to comparisons
+pub mod cmps;
+pub use cmps::*;
 
 #[cfg(feature = "std")]
 pub mod drcov;

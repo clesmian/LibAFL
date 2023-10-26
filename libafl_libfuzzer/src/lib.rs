@@ -2,7 +2,7 @@
 //!
 //! ## Usage
 //!
-//! To use LibAFL in place of libfuzzer, change the following line in your fuzz/Cargo.toml:
+//! To use `LibAFL` in place of `LibFuzzer`, change the following line in your `fuzz/Cargo.toml`:
 //!
 //! ```toml
 //! libfuzzer-sys = { version = "*", features = [...] }
@@ -14,11 +14,14 @@
 //! libfuzzer-sys = { version = "*", features = [...], package = "libafl_libfuzzer" }
 //! ```
 //!
-//! To use bleeding changes from upstream, use the following:
+//! To use bleeding-edge changes from upstream, use the following:
 //!
 //! ```toml
 //! libfuzzer-sys = { version = "*", features = [...], package = "libafl_libfuzzer", git = "https://github.com/AFLplusplus/LibAFL" }
 //! ```
+//!
+//! You could also specify a specific git revision using `rev = "..."` in this case.
+//!
 //!
 //! ## Flags
 //!
@@ -33,10 +36,10 @@
 //!
 //! - `-dedup=n`, with `n` = 1 enabling deduplication of crashes by stacktrace.
 //! - `-grimoire=n`, with `n` set to 0 or 1 disabling or enabling [grimoire] mutations, respectively.
-//!   - if not specified explicitly, `libafl_libfuzzer` will "guess" which setting is appropriate
+//!   - if not specified explicitly, `libafl_libfuzzer` will select based on whether existing inputs are UTF-8
 //!   - you should disable grimoire if your target is not string-like
 //! - `-report=n`, with `n` = 1 causing `libafl_libfuzzer` to emit a report on the corpus content.
-//! - `-skip_tracing=n`, with `n` = 1 causing `libafl_libfuzzer` to disable comparison log tracing.
+//! - `-skip_tracing=n`, with `n` = 1 causing `libafl_libfuzzer` to disable cmplog tracing.
 //!   - you should do this if your target performs many comparisons on memory sequences which are
 //!     not contained in the input
 //! - `-tui=n`, with `n` = 1 enabling a graphical terminal interface.
@@ -69,8 +72,8 @@
 //! This crate links to a (separately built) internal crate which affords the actual functionality.
 //! The internal crate must be built separately to ensure flags from dependent crates are not leaked
 //! to the runtime (e.g., to prevent coverage being collected on the runtime).
-
-#![doc = document_features::document_features!()]
+//!
+#![cfg_attr(feature = "document-features", doc = document_features::document_features!())]
 
 use std::ffi::{c_char, c_int};
 
@@ -86,4 +89,29 @@ extern "C" {
         argv: *mut *mut *const c_char,
         harness_fn: Option<extern "C" fn(*const u8, usize) -> c_int>,
     ) -> c_int;
+}
+
+#[cfg(all(
+    feature = "embed-runtime",
+    target_family = "unix",
+    // Disable when building with clippy, as it will complain about the missing environment
+    // variable which is set by the build script, which is not run under clippy.
+    not(feature = "cargo-clippy")
+))]
+pub const LIBAFL_LIBFUZZER_RUNTIME_LIBRARY: &'static [u8] =
+    include_bytes!(env!("LIBAFL_LIBFUZZER_RUNTIME_PATH"));
+
+#[cfg(test)]
+mod tests {
+    #[cfg(all(feature = "embed-runtime", not(feature = "cargo-clippy")))]
+    #[test]
+    fn test_embed_runtime_sized() {
+        use crate::LIBAFL_LIBFUZZER_RUNTIME_LIBRARY;
+
+        assert_ne!(
+            LIBAFL_LIBFUZZER_RUNTIME_LIBRARY.len(),
+            0,
+            "Runtime library empty"
+        );
+    }
 }

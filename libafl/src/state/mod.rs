@@ -13,10 +13,8 @@ use std::{
     vec::Vec,
 };
 
-#[cfg(test)]
-use libafl_bolts::rands::StdRand;
 use libafl_bolts::{
-    rands::Rand,
+    rands::{Rand, StdRand},
     serdeany::{NamedSerdeAnyMap, SerdeAny, SerdeAnyMap},
 };
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
@@ -210,6 +208,15 @@ pub trait HasExecutions {
     fn executions_mut(&mut self) -> &mut usize;
 }
 
+/// Trait for some stats of AFL
+pub trait HasImported {
+    ///the imported testcases counter
+    fn imported(&self) -> &usize;
+
+    ///the imported testcases counter (mutable)
+    fn imported_mut(&mut self) -> &mut usize;
+}
+
 /// Trait for the starting time
 pub trait HasStartTime {
     /// The starting time
@@ -244,6 +251,8 @@ pub struct StdState<I, C, R, SC> {
     executions: usize,
     /// At what time the fuzzing started
     start_time: Duration,
+    /// the number of new paths that imported from other fuzzers
+    imported: usize,
     /// The corpus
     corpus: C,
     // Solutions corpus
@@ -404,6 +413,20 @@ impl<I, C, R, SC> HasExecutions for StdState<I, C, R, SC> {
     #[inline]
     fn executions_mut(&mut self) -> &mut usize {
         &mut self.executions
+    }
+}
+
+impl<I, C, R, SC> HasImported for StdState<I, C, R, SC> {
+    /// Return the number of new paths that imported from other fuzzers
+    #[inline]
+    fn imported(&self) -> &usize {
+        &self.imported
+    }
+
+    /// Return the number of new paths that imported from other fuzzers
+    #[inline]
+    fn imported_mut(&mut self) -> &mut usize {
+        &mut self.imported
     }
 }
 
@@ -812,6 +835,7 @@ where
         let mut state = Self {
             rand,
             executions: 0,
+            imported: 0,
             start_time: Duration::from_millis(0),
             metadata: SerdeAnyMap::default(),
             named_metadata: NamedSerdeAnyMap::default(),
@@ -855,29 +879,28 @@ impl<I, C, R, SC> HasClientPerfMonitor for StdState<I, C, R, SC> {
     }
 }
 
-#[cfg(test)]
 /// A very simple state without any bells or whistles, for testing.
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct NopState<I> {
     metadata: SerdeAnyMap,
+    execution: usize,
     rand: StdRand,
     phantom: PhantomData<I>,
 }
 
-#[cfg(test)]
 impl<I> NopState<I> {
     /// Create a new State that does nothing (for tests)
     #[must_use]
     pub fn new() -> Self {
         NopState {
             metadata: SerdeAnyMap::new(),
+            execution: 0,
             rand: StdRand::default(),
             phantom: PhantomData,
         }
     }
 }
 
-#[cfg(test)]
 impl<I> UsesInput for NopState<I>
 where
     I: Input,
@@ -885,18 +908,16 @@ where
     type Input = I;
 }
 
-#[cfg(test)]
 impl<I> HasExecutions for NopState<I> {
     fn executions(&self) -> &usize {
-        unimplemented!();
+        &self.execution
     }
 
     fn executions_mut(&mut self) -> &mut usize {
-        unimplemented!();
+        &mut self.execution
     }
 }
 
-#[cfg(test)]
 impl<I> HasLastReportTime for NopState<I> {
     fn last_report_time(&self) -> &Option<Duration> {
         unimplemented!();
@@ -907,7 +928,6 @@ impl<I> HasLastReportTime for NopState<I> {
     }
 }
 
-#[cfg(test)]
 impl<I> HasMetadata for NopState<I> {
     fn metadata_map(&self) -> &SerdeAnyMap {
         &self.metadata
@@ -918,7 +938,6 @@ impl<I> HasMetadata for NopState<I> {
     }
 }
 
-#[cfg(test)]
 impl<I> HasRand for NopState<I> {
     type Rand = StdRand;
 
@@ -931,7 +950,6 @@ impl<I> HasRand for NopState<I> {
     }
 }
 
-#[cfg(test)]
 impl<I> HasClientPerfMonitor for NopState<I> {
     fn introspection_monitor(&self) -> &ClientPerfMonitor {
         unimplemented!()
@@ -942,7 +960,6 @@ impl<I> HasClientPerfMonitor for NopState<I> {
     }
 }
 
-#[cfg(test)]
 impl<I> State for NopState<I> where I: Input {}
 
 #[cfg(feature = "python")]

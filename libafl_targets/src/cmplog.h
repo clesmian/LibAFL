@@ -25,6 +25,29 @@ typedef struct CmpLogHeader {
   uint8_t  kind;
 } CmpLogHeader;
 
+#ifndef _WIN32
+typedef struct CmpLogHeaderExtended {
+  unsigned hits : 24;
+  unsigned id : 24;
+  unsigned shape : 5;
+  unsigned type : 2;
+  unsigned attribute : 4;
+  unsigned overflow : 1;
+  unsigned reserved : 4;
+} __attribute__((packed)) CmpLogHeaderExtended;
+#else
+__pragma(pack(push, 1)) typedef struct CmpLogHeaderExtended {
+  unsigned hits : 24;
+  unsigned id : 24;
+  unsigned shape : 5;
+  unsigned type : 2;
+  unsigned attribute : 4;
+  unsigned overflow : 1;
+  unsigned reserved : 4;
+} CmpLogHeaderExtended;
+__pragma(pack(pop))
+#endif
+
 typedef struct CmpLogInstruction {
   uint64_t v0;
   uint64_t v1;
@@ -43,8 +66,19 @@ typedef struct CmpLogMap {
   } vals;
 } CmpLogMap;
 
+typedef struct CmpLogMapExtended {
+  CmpLogHeaderExtended headers[CMPLOG_MAP_W];
+  union {
+    CmpLogInstruction operands[CMPLOG_MAP_W][CMPLOG_MAP_H];
+    CmpLogRoutine     routines[CMPLOG_MAP_W][CMPLOG_MAP_RTN_H];
+  } vals;
+} CmpLogMapExtended;
+
 extern CmpLogMap  libafl_cmplog_map;
 extern CmpLogMap *libafl_cmplog_map_ptr;
+
+extern CmpLogMapExtended  libafl_cmplog_map_extended;
+extern CmpLogMapExtended *libafl_cmplog_map_extended_ptr;
 
 extern uint8_t libafl_cmplog_enabled;
 
@@ -56,29 +90,5 @@ void __libafl_targets_cmplog_routines(uintptr_t k, const uint8_t *ptr1,
 
 void __libafl_targets_cmplog_routines_len(uintptr_t k, const uint8_t *ptr1,
                                           const uint8_t *ptr2, size_t len);
-
-static inline void __libafl_targets_cmplog(uintptr_t k, uint8_t shape,
-                                           uint64_t arg1, uint64_t arg2) {
-  if (!libafl_cmplog_enabled) { return; }
-  libafl_cmplog_enabled = false;
-
-  uint16_t hits;
-  if (libafl_cmplog_map_ptr->headers[k].kind != CMPLOG_KIND_INS) {
-    libafl_cmplog_map_ptr->headers[k].kind = CMPLOG_KIND_INS;
-    libafl_cmplog_map_ptr->headers[k].hits = 1;
-    libafl_cmplog_map_ptr->headers[k].shape = shape;
-    hits = 0;
-  } else {
-    hits = libafl_cmplog_map_ptr->headers[k].hits++;
-    if (libafl_cmplog_map_ptr->headers[k].shape < shape) {
-      libafl_cmplog_map_ptr->headers[k].shape = shape;
-    }
-  }
-
-  hits &= CMPLOG_MAP_H - 1;
-  libafl_cmplog_map_ptr->vals.operands[k][hits].v0 = arg1;
-  libafl_cmplog_map_ptr->vals.operands[k][hits].v1 = arg2;
-  libafl_cmplog_enabled = true;
-}
 
 #endif
