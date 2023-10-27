@@ -105,6 +105,9 @@ pub use sancov_8bit::*;
 pub mod coverage;
 pub use coverage::*;
 
+pub mod storfuzz;
+pub use storfuzz::*;
+
 pub mod value_profile;
 pub use value_profile::*;
 

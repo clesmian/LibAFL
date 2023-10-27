@@ -62,6 +62,9 @@ extern size_t   __afl_map_size;
 extern uint8_t *__token_start;
 extern uint8_t *__token_stop;
 
+extern uint8_t *__storfuzz_area_ptr;
+extern size_t   __storfuzz_map_size;
+
 uint8_t        *__afl_fuzz_ptr;
 static uint32_t __afl_fuzz_len_local;
 uint32_t       *__afl_fuzz_len = &__afl_fuzz_len_local;
@@ -107,6 +110,7 @@ void __afl_map_shm(void) {
   already_initialized_shm = 1;
 
   char *id_str = getenv(SHM_ENV_VAR);
+  char *storfuzz_id_str = getenv("__STORFUZZ_SHM_ID");
 
   if (id_str) {
 #ifdef USEMMAP
@@ -122,9 +126,17 @@ void __afl_map_shm(void) {
       exit(1);
     }
 
-    shm_base =
-        mmap(0, __afl_map_size, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
-
+    if(storfuzz_id_str) {
+      shm_base = mmap(0, __afl_map_size, PROT_READ | PROT_WRITE, MAP_SHARED,
+                      shm_fd, 0);
+    } else {
+      // AFL++ compatibility
+      shm_base = mmap(0, __afl_map_size + __storfuzz_map_size,
+                      PROT_READ | PROT_WRITE, MAP_SHARED,
+                      shm_fd, 0);
+      // Don't care whether it worked. This is checked below
+      __storfuzz_area_ptr = shm_base + __afl_map_size;
+    }
     close(shm_fd);
     shm_fd = -1;
 
@@ -139,6 +151,10 @@ void __afl_map_shm(void) {
 #else
     uint32_t shm_id = atoi(id_str);
     __afl_area_ptr = (uint8_t *)shmat(shm_id, NULL, 0);
+    // AFL++ compat shenanigans
+    if(!storfuzz_id_str) {
+      __storfuzz_area_ptr = __afl_area_ptr + __afl_map_size;
+    }
 
     /* Whooooops. */
 
@@ -160,6 +176,55 @@ void __afl_map_shm(void) {
     send_forkserver_error(FS_ERROR_SHM_OPEN);
     exit(1);
   }
+
+  if (storfuzz_id_str) {
+#ifdef USEMMAP
+    const char    *shm_file_path = storfuzz_id_str;
+    int            shm_fd = -1;
+    unsigned char *shm_base = NULL;
+
+    /* create the shared memory segment as if it was a file */
+    shm_fd = shm_open(shm_file_path, O_RDWR, DEFAULT_PERMISSION);
+    if (shm_fd == -1) {
+      fprintf(stderr, "shm_open() failed\n");
+      send_forkserver_error(FS_ERROR_SHM_OPEN);
+      exit(1);
+    }
+
+    shm_base =
+        mmap(0, __storfuzz_map_size, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
+
+    close(shm_fd);
+    shm_fd = -1;
+
+    if (shm_base == MAP_FAILED) {
+      fprintf(stderr, "mmap() failed\n");
+      perror("mmap for StorFuzz map");
+      send_forkserver_error(FS_ERROR_MMAP);
+      exit(2);
+    }
+
+    __storfuzz_area_ptr = shm_base;
+#else
+    uint32_t shm_id = atoi(storfuzz_id_str);
+    __storfuzz_area_ptr = (uint8_t *)shmat(shm_id, NULL, 0);
+
+    /* Whooooops. */
+
+    if (!__storfuzz_area_ptr || __storfuzz_area_ptr == (void *)-1) {
+      send_forkserver_error(FS_ERROR_SHMAT);
+      perror("shmat for StorFuzz map");
+      exit(1);
+    }
+
+#endif
+  } else {
+    fprintf(stderr,
+            "Error: variable for StorFuzz coverage shared memory is not set\n");
+    send_forkserver_error(FS_ERROR_SHM_OPEN);
+    exit(1);
+  }
+
 }
 
 static void map_input_shared_memory() {
@@ -227,9 +292,19 @@ void __afl_start_forkserver(void) {
 
   void (*old_sigchld_handler)(int) = signal(SIGCHLD, SIG_DFL);
 
+  // Do some AFL++ compatibility shenanigans
+  char *storfuzz_id_str = getenv("__STORFUZZ_SHM_ID");
+  size_t orig_afl_map_size = __afl_map_size;
+  if(!storfuzz_id_str){
+    __afl_map_size += __storfuzz_map_size;
+  }
+
   if (__afl_map_size <= FS_OPT_MAX_MAPSIZE) {
     status_for_fsrv |= (FS_OPT_SET_MAPSIZE(__afl_map_size) | FS_OPT_MAPSIZE);
   }
+
+  // Restore this in case we have changed it for AFL++ compat
+  __afl_map_size = orig_afl_map_size;
 
   int autodict_on = __token_start != NULL && __token_stop != NULL;
   if (autodict_on) { status_for_fsrv |= FS_OPT_AUTODICT; }

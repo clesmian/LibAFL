@@ -15,6 +15,9 @@ fn main() {
     let edges_map_size: usize = option_env!("LIBAFL_EDGES_MAP_SIZE")
         .map_or(Ok(65536), str::parse)
         .expect("Could not parse LIBAFL_EDGES_MAP_SIZE");
+    let storfuzz_map_size: usize = option_env!("STORFUZZ_MAP_SIZE")
+        .map_or(Ok(1 << 17), str::parse)
+        .expect("Could not parse STORFUZZ_MAP_SIZE");
     let cmp_map_size: usize = option_env!("LIBAFL_CMP_MAP_SIZE")
         .map_or(Ok(65536), str::parse)
         .expect("Could not parse LIBAFL_CMP_MAP_SIZE");
@@ -40,6 +43,8 @@ fn main() {
 
         /// The size of the edges map
         pub const EDGES_MAP_SIZE: usize = {edges_map_size};
+        /// The size of the StorFuzz map
+        pub const STORFUZZ_MAP_SIZE: usize = {storfuzz_map_size};
         /// The size of the cmps map
         pub const CMP_MAP_SIZE: usize = {cmp_map_size};
         /// The width of the aflpp cmplog map
@@ -167,6 +172,7 @@ fn main() {
     cc::Build::new()
         .file(src_dir.join("coverage.c"))
         .define("EDGES_MAP_SIZE", Some(&*format!("{edges_map_size}")))
+        .define("STORFUZZ_MAP_SIZE", Some(&*format!("{storfuzz_map_size}")))
         .define("ACCOUNTING_MAP_SIZE", Some(&*format!("{acc_map_size}")))
         .compile("coverage");
 
@@ -210,6 +216,13 @@ fn main() {
             .file(src_dir.join("cmplog.c"))
             .compile("cmplog");
     }
+
+    println!("cargo:rerun-if-changed=src/storfuzz.c");
+
+    cc::Build::new()
+        .file(src_dir.join("storfuzz.c"))
+        .define("STORFUZZ_MAP_SIZE", Some(&*format!("{storfuzz_map_size}")))
+        .compile("storfuzz");
 
     #[cfg(unix)]
     {
