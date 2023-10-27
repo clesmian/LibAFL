@@ -217,12 +217,19 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
           AllocaInst *allocaInst;
           if (!(dyn_cast<AllocaInst>(storeLocation))) {
             Value       *storedValue = storeInst->getValueOperand();
+
+            // If the stored value does not stem from an instruction it is not
+            // interesting
+            Instruction* storedValueInstruction;
+            if (!(storedValueInstruction = dyn_cast<Instruction>(storedValue)))
+              continue;
+
             IntegerType *storedType =
                 dyn_cast<IntegerType>(storedValue->getType());
             if (storedType) {
               // Insert before the instruction following the value definition
               IRB.SetInsertPoint(
-                  (dyn_cast<Instruction>(storedValue))->getNextNode());
+                  storedValueInstruction->getNextNode());
               Value *ReducedValue;
 
               // TODO: Check for pointer (is this necessary?)
