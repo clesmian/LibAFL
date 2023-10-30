@@ -220,9 +220,9 @@ void __afl_map_shm(void) {
 #endif
   } else {
     fprintf(stderr,
-            "Error: variable for StorFuzz coverage shared memory is not set\n");
-    send_forkserver_error(FS_ERROR_SHM_OPEN);
-    exit(1);
+            "WARNING: variable for StorFuzz coverage shared memory is not set. Appending to AFL Map\n");
+//    send_forkserver_error(FS_ERROR_SHM_OPEN);
+//    exit(1);
   }
 
 }
