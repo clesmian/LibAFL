@@ -47,6 +47,7 @@
 
 using namespace llvm;
 
+// To enable: Add `-mllvm --debug_storfuzz_coverage` to cmd-line
 static cl::opt<bool>     Debug("debug_storfuzz_coverage", cl::desc("Debug prints"),
                                cl::init(false), cl::NotHidden);
 
