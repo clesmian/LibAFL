@@ -1,0 +1,21 @@
+[package]
+name = "dump-queue-stats"
+version = "0.1.1"
+edition = "2021"
+
+[features]
+variable-data-map-size = []
+# Enables introspection in libafl (most useful in conjunction with tui)
+introspection = ["libafl/introspection"]
+# Only evaluate data coverage
+data-cov-only = []
+# Only evaluate edge coverage
+edge-cov-only = []
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+libafl = {path="../../LibAFL/libafl", features = []}
+libafl_bolts = {path="../../LibAFL/libafl_bolts"}
+clap = {version = "4.1.4", features = ["derive"] }
+konst = {version = "0.3.5", features = ["parsing"]}
+env_logger={version = "0.10.0"}

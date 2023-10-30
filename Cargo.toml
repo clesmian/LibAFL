@@ -5,6 +5,7 @@ members = [
     "afl-fuzz-clone",
     "dump-corpus",
     "zafl_constants",
+    "dump-queue-stats",
 ]
 
 [profile.release]
