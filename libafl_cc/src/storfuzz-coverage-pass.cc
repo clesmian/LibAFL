@@ -1,30 +1,4 @@
-/*
-   american fuzzy lop++ - LLVM-mode instrumentation pass
-   ---------------------------------------------------
-
-   Written by Laszlo Szekeres <lszekeres@google.com>,
-              Adrian Herrera <adrian.herrera@anu.edu.au>,
-              Michal Zalewski
-
-   LLVM integration design comes from Laszlo Szekeres. C bits copied-and-pasted
-   from afl-as.c are Michal's fault.
-
-   NGRAM previous location coverage comes from Adrian Herrera.
-
-   Copyright 2015, 2016 Google Inc. All rights reserved.
-   Copyright 2019-2020 AFLplusplus Project. All rights reserved.
-
-   Licensed under the Apache License, Version 2.0 (the "License");
-   you may not use this file except in compliance with the License.
-   You may obtain a copy of the License at:
-
-     http://www.apache.org/licenses/LICENSE-2.0
-
-   This library is plugged into LLVM when invoking clang through afl-clang-fast.
-   It tells the compiler to add code roughly equivalent to the bits discussed
-   in ../afl-as.h.
-
- */
+// Adapted from afl-coverage-pass.cc
 
 #include "common-llvm.h"
 
@@ -89,8 +63,6 @@ class StorFuzzCoverage : public ModulePass {
   static char ID;
   StorFuzzCoverage() : ModulePass(ID) {
 #endif
-
-    // initInstrumentList();
   }
 
 #ifdef USE_NEW_PM
@@ -102,8 +74,6 @@ class StorFuzzCoverage : public ModulePass {
  protected:
   uint32_t                          map_size = DATA_MAP_SIZE;
   uint32_t                          function_minimum_size = 1;
-  DenseMap<BasicBlock *, int32_t>   bb_to_cur_loc;
-  DenseMap<StringRef, BasicBlock *> entry_bb;
 };
 
 }  // namespace
@@ -156,14 +126,6 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
   /* Setup random() so we get Actually Random(TM) */
   rand_seed = time(NULL);
   srand(rand_seed);
-
-  unsigned PrevLocSize = 0;
-  unsigned PrevCallerSize = 0;
-
-  bool instrument_caller = false;
-
-  /* Get globals for the SHM region and the previous location. Note that
-     __afl_prev_loc is thread-local. */
 
   GlobalVariable *StorFuzzMapPtr =
       new GlobalVariable(M, PointerType::get(Int8Ty, 0), false,
