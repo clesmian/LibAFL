@@ -25,11 +25,6 @@
    in ../afl-as.h.
 
  */
-#ifndef LLVM_VERSION_MAJOR // Fix for CLion being stupid
-#define USE_NEW_PM
-#define LLVM_VERSION_MAJOR 15
-#define LLVM_VERSION_PATCH 7
-#endif
 
 #include "common-llvm.h"
 
