@@ -236,8 +236,8 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
 
 
     for (auto &BB : F) {
-      BasicBlock::iterator IP = BB.getFirstInsertionPt();
-      IRBuilder<>          IRB(&(*IP));
+      BasicBlock::iterator insertionPoint = BB.getFirstInsertionPt();
+      IRBuilder<>          IRB(&(*insertionPoint));
       for (auto &instr : BB) {
         StoreInst *storeInst;
         if ((storeInst = dyn_cast<StoreInst>(&instr))) {
@@ -251,8 +251,8 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
 
             // If the stored value does not stem from an instruction it is not
             // interesting
-            Instruction* storedValueInstruction;
-            if (!(storedValueInstruction = dyn_cast<Instruction>(storedValue)))
+            Instruction*valueDefInstruction;
+            if (!(valueDefInstruction = dyn_cast<Instruction>(storedValue)))
               // TODO: Check for interesting operations (e.g. not simply a load and store, but some change)
               continue;
 
@@ -268,23 +268,24 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
                 storeInst->dump();
               }
 
-              IP = storedValueInstruction->getNextNode()->getIterator();
-              BasicBlock::const_iterator End = BB.end();
+              BasicBlock *insertionBB = valueDefInstruction->getParent();
+              insertionPoint = valueDefInstruction->getNextNode()->getIterator();
+              BasicBlock::const_iterator End = insertionBB->end();
               int i = 0;
-              while(IP != End && i < BB.size()){
-                if (isa<PHINode>(IP)){
-                  IP++;
-                } else if (IP->isEHPad()) {
-                  IP++;
-                } else if (BB.isEntryBlock()) {
-                    while (IP != End && i < BB.size() &&
-                           (isa<AllocaInst>(*IP) || isa<DbgInfoIntrinsic>(*IP) ||
-                            isa<PseudoProbeInst>(*IP))) {
-                      if (const AllocaInst *AI = dyn_cast<AllocaInst>(&*IP)) {
+              while(insertionPoint != End && i < insertionBB->size()){
+                if (isa<PHINode>(insertionPoint)){
+                  insertionPoint++;
+                } else if (insertionPoint->isEHPad()) {
+                  insertionPoint++;
+                } else if (insertionBB->isEntryBlock()) {
+                    while (insertionPoint != End && i < insertionBB->size() &&
+                           (isa<AllocaInst>(*insertionPoint) || isa<DbgInfoIntrinsic>(*insertionPoint) ||
+                            isa<PseudoProbeInst>(*insertionPoint))) {
+                      if (const AllocaInst *AI = dyn_cast<AllocaInst>(&*insertionPoint)) {
                         if (!AI->isStaticAlloca())
                           break;
                       }
-                      ++IP;
+                      ++insertionPoint;
                       i++;
                     }
                     break;
@@ -293,13 +294,13 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
                 }
                 i++;
               }
-              if(IP == End || i == BB.size()){
+              if(insertionPoint == End || i == insertionBB->size()){
 
                   fprintf(stderr, "ERROR: Could not find insertion point in function '%s' val: ", F.getName().str().c_str());
                   storedValue->dump();
-                  BB.dump();
+                  insertionBB->dump();
               }
-              IRB.SetInsertPoint(&BB, IP);
+              IRB.SetInsertPoint(insertionBB, insertionPoint);
 
               // TODO: Check for pointer (is this necessary?)
 
@@ -311,14 +312,6 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
               Value* Lower8Bit = IRB.CreateZExtOrTrunc(Lower16Bit, IRB.getInt8Ty());
 
               Value *ReducedValue;
-//              ReducedValue = IRB.CreateXor(
-//                  IRB.CreateZExtOrTrunc(Lower16Bit, IRB.getInt8Ty()),
-//                  IRB.CreateZExtOrTrunc(, IRB.getInt8Ty()));
-//              ReducedValue = IRB.CreateXor(Upper8Bit, Lower8Bit);
-              ReducedValue = IRB.CreateZExtOrTrunc(Lower16Bit, IRB.getInt8Ty());
-
-              dyn_cast<Instruction>(ReducedValue)->setMetadata(M.getMDKindID("storfuzz_reduced"),
-                                        MDNode::get(C, None));
               ReducedValue = IRB.CreateXor(Upper8Bit, Lower8Bit);
 
               /* Make up location_id */
@@ -354,7 +347,7 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
               if (getenv("STORFUZZ_VERBOSE")) {
                 fprintf(stderr, "MapPtrIdx: ");
                 MapPtrIdx->dump();
-                BB.dump();
+                insertionBB->dump();
               }
                 // Write to map (threadsafe by default)
 #if 1 // Threadsafe (this somehow crashes)
