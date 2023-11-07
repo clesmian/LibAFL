@@ -40,7 +40,7 @@ constexpr std::nullopt_t None = std::nullopt;
   } while (0)
 
 static uint32_t RandBelow(uint32_t max) {
-  return (uint32_t)rand() % (max + 1);
+  return (uint32_t)rand() % (max);
 }
 
 /* needed up to 3.9.0 */
