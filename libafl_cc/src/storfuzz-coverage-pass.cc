@@ -139,7 +139,7 @@ class StorFuzzCoverage : public ModulePass {
 }  // namespace
 
 #ifdef USE_NEW_PM
-extern "C" ::llvm::PassPluginLibraryInfo LLVM_ATTRIBUTE_WEAK
+extern "C" LLVM_ATTRIBUTE_WEAK ::llvm::PassPluginLibraryInfo
 llvmGetPassPluginInfo() {
   return {LLVM_PLUGIN_API_VERSION, "StorFuzzCoverage", "v0.1",
           /* lambda to insert our pass into the pass pipeline. */
@@ -150,6 +150,17 @@ llvmGetPassPluginInfo() {
             PB.registerOptimizerLastEPCallback(
                 [](ModulePassManager &MPM, OptimizationLevel OL) {
                   MPM.addPass(StorFuzzCoverage());
+                });
+
+            // Allow for testing with opt
+            PB.registerPipelineParsingCallback(
+                [](StringRef Name, ModulePassManager &MPM,
+                   ArrayRef<PassBuilder::PipelineElement>) {
+                  if (Name == "StorFuzzCoverage") {
+                    MPM.addPass(StorFuzzCoverage());
+                    return true;
+                  }
+                  return false;
                 });
           }};
 }
@@ -288,16 +299,17 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
                   BB.dump();
               }
               IRB.SetInsertPoint(&BB, IP);
-              Value *ReducedValue;
 
               // TODO: Check for pointer (is this necessary?)
 
               Value *Lower16Bit = IRB.CreateZExtOrTrunc(storedValue, IRB.getInt16Ty());
               dyn_cast<Instruction>(Lower16Bit)->setMetadata(M.getMDKindID("storfuzz_get_val"),
                                       MDNode::get(C, None));
-              // TODO: Reduce Value to 8 bit
-//              Value* Upper8Bit = IRB.CreateZExtOrTrunc(IRB.CreateLShr(Lower16Bit, 8), IRB.getInt8Ty());
-//              Value* Lower8Bit = IRB.CreateZExtOrTrunc(Lower16Bit, IRB.getInt8Ty());
+//              // TODO: Reduce Value to 8 bit
+              Value* Upper8Bit = IRB.CreateZExtOrTrunc(IRB.CreateLShr(Lower16Bit, 8), IRB.getInt8Ty());
+              Value* Lower8Bit = IRB.CreateZExtOrTrunc(Lower16Bit, IRB.getInt8Ty());
+
+              Value *ReducedValue;
 //              ReducedValue = IRB.CreateXor(
 //                  IRB.CreateZExtOrTrunc(Lower16Bit, IRB.getInt8Ty()),
 //                  IRB.CreateZExtOrTrunc(, IRB.getInt8Ty()));
@@ -306,6 +318,7 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
 
               dyn_cast<Instruction>(ReducedValue)->setMetadata(M.getMDKindID("storfuzz_reduced"),
                                         MDNode::get(C, None));
+              ReducedValue = IRB.CreateXor(Upper8Bit, Lower8Bit);
 
               /* Make up location_id */
               cur_loc = RandBelow(map_size);
