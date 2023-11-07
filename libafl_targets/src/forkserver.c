@@ -171,10 +171,13 @@ void __afl_map_shm(void) {
 
     __afl_area_ptr[0] = 1;
   } else {
-    fprintf(stderr,
-            "Error: variable for edge coverage shared memory is not set\n");
-    send_forkserver_error(FS_ERROR_SHM_OPEN);
-    exit(1);
+    // TODO: Auto-initialize to allow running without AFL
+    if(!getenv("CONFIGURE")) {
+      fprintf(stderr,
+              "Error: variable for edge coverage shared memory is not set\n");
+      send_forkserver_error(FS_ERROR_SHM_OPEN);
+      exit(1);
+    }
   }
 
   if (storfuzz_id_str) {

@@ -26,15 +26,15 @@ pub fn main() {
             // Enable libafl's coverage instrumentation
             .add_pass(LLVMPasses::AFLCoverage)
             .add_pass(LLVMPasses::StorFuzzCoverage)
-            .add_arg("-mllvm")
-            .add_arg("-ctx") // Context sensitive coverage
+            // .add_arg("-mllvm")
+            // .add_arg("-ctx") // Context sensitive coverage
             // Imitate afl-cc's compile definitions
             .add_arg("-D__AFL_FUZZ_INIT()=int __afl_sharedmem_fuzzing = 1;extern unsigned int *__afl_fuzz_len;extern unsigned char *__afl_fuzz_ptr;unsigned char __afl_fuzz_alt[1048576];unsigned char *__afl_fuzz_alt_ptr = __afl_fuzz_alt;void libafl_start_forkserver(void)")
             .add_arg("-D__AFL_FUZZ_TESTCASE_BUF=(__afl_fuzz_ptr ? __afl_fuzz_ptr : __afl_fuzz_alt_ptr)")
             .add_arg("-D__AFL_FUZZ_TESTCASE_LEN=(__afl_fuzz_ptr ? *__afl_fuzz_len : (*__afl_fuzz_len = read(0, __afl_fuzz_alt_ptr, 1048576)) == 0xffffffff ? 0 : *__afl_fuzz_len)")
             .add_arg("-D__AFL_INIT()=libafl_start_forkserver()") // Not really needed as it is auto-initialized by constructor
             // Link with libafl's forkserver implementation
-            .link_staticlib(&dir, "libforkserver_libafl_cc")
+            .link_staticlib(&dir, "libforkserver_storfuzz_cc")
             .run()
             .expect("Failed to run the wrapped compiler")
         {

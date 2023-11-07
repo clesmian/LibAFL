@@ -336,6 +336,9 @@ pub const LIBAFL_CC_LLVM_VERSION: Option<usize> = None;
         /// The size of the edges map
         pub const EDGES_MAP_SIZE: usize = {edges_map_size};
 
+        /// The size of the edges map
+        pub const STORFUZZ_MAP_SIZE: usize = {storfuzz_map_size};
+
         /// The size of the accounting maps
         pub const ACCOUNTING_MAP_SIZE: usize = {acc_map_size};
 

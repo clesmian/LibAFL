@@ -111,7 +111,7 @@ class StorFuzzCoverage : public ModulePass {
         "close_stdout",
         "dup_and_close_stderr",
         "maybe_close_fd_mask",
-        "ExecuteFilesOnyByOne"
+        "ExecuteFilesOnyByOne",
 
     };
 
@@ -155,7 +155,7 @@ llvmGetPassPluginInfo() {
 }
 #else
 
-char StorFuzzCoverage::ID = 0;
+char StorFuzzCoverage::ID = 1;
 #endif
 
 #ifdef USE_NEW_PM
@@ -180,7 +180,7 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
   unsigned int cur_loc = 0;
 
 #ifdef USE_NEW_PM
-  auto PA = PreservedAnalyses::all();
+  auto PA = PreservedAnalyses::none();
 #endif
 
   /* Setup random() so we get Actually Random(TM) */
@@ -188,8 +188,8 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
   srand(rand_seed);
 
   GlobalVariable *StorFuzzMapPtr =
-      new GlobalVariable(M, PointerType::get(Int8Ty, 0), false,
-                         GlobalValue::ExternalLinkage, 0, "__storfuzz_area_ptr");
+      new GlobalVariable(M, PointerType::getUnqual(Int8Ty), false,
+                         GlobalValue::ExternalWeakLinkage, nullptr, "__storfuzz_area_ptr");
 
 
   // other constants we need
@@ -222,7 +222,7 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
 
     if (F.size() < function_minimum_size) { continue; }
 
-    std::list<Value *> todo;
+
     for (auto &BB : F) {
       BasicBlock::iterator IP = BB.getFirstInsertionPt();
       IRBuilder<>          IRB(&(*IP));
@@ -234,7 +234,6 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
             continue;
 
           Value      *storeLocation = storeInst->getPointerOperand();
-          AllocaInst *allocaInst;
           if (!(dyn_cast<AllocaInst>(storeLocation))) {
             Value       *storedValue = storeInst->getValueOperand();
 
@@ -242,37 +241,86 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
             // interesting
             Instruction* storedValueInstruction;
             if (!(storedValueInstruction = dyn_cast<Instruction>(storedValue)))
+              // TODO: Check for interesting operations (e.g. not simply a load and store, but some change)
               continue;
 
             IntegerType *storedType =
                 dyn_cast<IntegerType>(storedValue->getType());
             if (storedType) {
               // Insert before the instruction following the value definition
-              IRB.SetInsertPoint(
-                  storedValueInstruction->getNextNode());
+              if (getenv("STORFUZZ_VERBOSE")) {
+                BB.dump();
+                fprintf(stderr, "Stored value: ");
+                storedValue->dump();
+                fprintf(stderr, "Store instruction: ");
+                storeInst->dump();
+              }
+
+              IP = storedValueInstruction->getNextNode()->getIterator();
+              BasicBlock::const_iterator End = BB.end();
+              int i = 0;
+              while(IP != End && i < BB.size()){
+                if (isa<PHINode>(IP)){
+                  IP++;
+                } else if (IP->isEHPad()) {
+                  IP++;
+                } else if (BB.isEntryBlock()) {
+                    while (IP != End && i < BB.size() &&
+                           (isa<AllocaInst>(*IP) || isa<DbgInfoIntrinsic>(*IP) ||
+                            isa<PseudoProbeInst>(*IP))) {
+                      if (const AllocaInst *AI = dyn_cast<AllocaInst>(&*IP)) {
+                        if (!AI->isStaticAlloca())
+                          break;
+                      }
+                      ++IP;
+                      i++;
+                    }
+                    break;
+                } else {
+                    break;
+                }
+                i++;
+              }
+              if(IP == End || i == BB.size()){
+
+                  fprintf(stderr, "ERROR: Could not find insertion point in function '%s' val: ", F.getName().str().c_str());
+                  storedValue->dump();
+                  BB.dump();
+              }
+              IRB.SetInsertPoint(&BB, IP);
               Value *ReducedValue;
 
               // TODO: Check for pointer (is this necessary?)
 
-              // Reduce Value to 8 bit
-              ReducedValue = IRB.CreateXorReduce(IRB.CreateBitCast(
-                  IRB.CreateZExtOrTrunc(storedValue, IRB.getInt16Ty()),
-                  VectorType::get(IRB.getInt8Ty(), 2, false)));
+              Value *Lower16Bit = IRB.CreateZExtOrTrunc(storedValue, IRB.getInt16Ty());
+              dyn_cast<Instruction>(Lower16Bit)->setMetadata(M.getMDKindID("storfuzz_get_val"),
+                                      MDNode::get(C, None));
+              // TODO: Reduce Value to 8 bit
+//              Value* Upper8Bit = IRB.CreateZExtOrTrunc(IRB.CreateLShr(Lower16Bit, 8), IRB.getInt8Ty());
+//              Value* Lower8Bit = IRB.CreateZExtOrTrunc(Lower16Bit, IRB.getInt8Ty());
+//              ReducedValue = IRB.CreateXor(
+//                  IRB.CreateZExtOrTrunc(Lower16Bit, IRB.getInt8Ty()),
+//                  IRB.CreateZExtOrTrunc(, IRB.getInt8Ty()));
+//              ReducedValue = IRB.CreateXor(Upper8Bit, Lower8Bit);
+              ReducedValue = IRB.CreateZExtOrTrunc(Lower16Bit, IRB.getInt8Ty());
+
+              dyn_cast<Instruction>(ReducedValue)->setMetadata(M.getMDKindID("storfuzz_reduced"),
+                                        MDNode::get(C, None));
 
               /* Make up location_id */
               cur_loc = RandBelow(map_size);
               ConstantInt *CurLoc;
               CurLoc = ConstantInt::get(Int32Ty, cur_loc);
 
-              auto bitmask_selector = RandBelow(8);
+              auto bitmask_selector = RandBelow(7);
 
               // Get Map location
-              LoadInst *MapPtr = IRB.CreateLoad(
+              LoadInst *MapPtrLoad = IRB.CreateLoad(
 #if LLVM_VERSION_MAJOR >= 14
                   PointerType::get(Int8Ty, 0),
 #endif
                   StorFuzzMapPtr);
-              MapPtr->setMetadata(M.getMDKindID("nosanitize"),
+              MapPtrLoad->setMetadata(M.getMDKindID("nosanitize"),
                                   MDNode::get(C, None));
 
               // Calculate Index in map
@@ -281,22 +329,57 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
 #if LLVM_VERSION_MAJOR >= 14
                   Int8Ty,
 #endif
-                  MapPtr, IRB.CreateXor(ReducedValue, CurLoc));
-
-              // Write to map (threadsafe by default)
+                  MapPtrLoad,
+                  IRB.CreateXor(
+                      CurLoc,
+                      IRB.CreateZExtOrTrunc(ReducedValue, IRB.getInt32Ty())
+                      )
+                  );
+              dyn_cast<Instruction>(MapPtrIdx)->setMetadata(M.getMDKindID("storfuzz_calc_index"),
+                                     MDNode::get(C, None));
+              if (getenv("STORFUZZ_VERBOSE")) {
+                fprintf(stderr, "MapPtrIdx: ");
+                MapPtrIdx->dump();
+                BB.dump();
+              }
+                // Write to map (threadsafe by default)
+#if 1 // Threadsafe (this somehow crashes)
               IRB.CreateAtomicRMW(llvm::AtomicRMWInst::BinOp::Or, MapPtrIdx,
                                   Mask[bitmask_selector],
 #if LLVM_VERSION_MAJOR >= 13
                                   llvm::MaybeAlign(1),
 #endif
                                   llvm::AtomicOrdering::Monotonic);
+#else // Not threadsafe (not clear whether this also crashes)
+         LoadInst *BitMapEntry = IRB.CreateLoad(
+#if LLVM_VERSION_MAJOR >= 14
+          IRB.getInt8Ty(),
+#endif
+          MapPtrIdx);
+         BitMapEntry->setMetadata(M.getMDKindID("nosanitize"), MDNode::get(C, None));
 
+Value *UpdatedEntry = IRB.CreateOr(BitMapEntry, Mask[bitmask_selector]);
+
+IRB.CreateStore(UpdatedEntry, MapPtrIdx)
+   ->setMetadata(M.getMDKindID("nosanitize"), MDNode::get(C, None));
+
+#endif
               inst_stores++;
             }
           }
         }
       }
+//      for (auto &I : BB) {
+//        if (!I.isTerminator()){
+//          Value *V = &I;
+////          I.dump();
+////          V->getType()->isEmptyTy();
+//
+//        }
+//      }
     }
+
+
   }
 
   if (Debug) {
@@ -306,6 +389,11 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
       fprintf(stderr, "Instrumented %d targets.\n", inst_stores);
   }
 
+  if(getenv("STORFUZZ_DUMP_CONVERTED")){
+    raw_ostream &out = outs();
+    M.print(out, nullptr);
+
+  }
 #ifdef USE_NEW_PM
   return PA;
 #else
