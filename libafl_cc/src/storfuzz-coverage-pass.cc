@@ -62,6 +62,7 @@ class StorFuzzCoverage : public PassInfoMixin<StorFuzzCoverage> {
 class StorFuzzCoverage : public ModulePass {
  public:
   static char ID;
+  static llvm::StringRef name() { return "StorFuzzCoverage"; }
   StorFuzzCoverage() : ModulePass(ID) {
 #endif
   }
