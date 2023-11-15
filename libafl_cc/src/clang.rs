@@ -152,14 +152,6 @@ impl ToolWrapper for ClangWrapper {
 
         let mut linking = true;
         let mut shared = false;
-        // Detect stray -v calls from ./configure scripts.
-        if args.len() > 1 && args[1].as_ref() == "-v" {
-            if args.len() == 2 {
-                self.base_args.push(args[1].as_ref().into());
-                return Ok(self);
-            }
-            linking = false;
-        }
 
         let mut suppress_linking = 0;
         let mut i = 1;
