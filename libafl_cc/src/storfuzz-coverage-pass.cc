@@ -317,9 +317,9 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
                     storedValue->dump();
                     insertionBB->dump();
 
-                    BasicBlock *insertionBB = storeInst->getParent();
+                    insertionBB = storeInst->getParent();
                     insertionPoint = storeInst->getIterator();
-                    BasicBlock::const_iterator End = insertionBB->end();
+                    End = insertionBB->end();
                     int i = 0;
 
                     // Try to find an insertion point close to the store instruction
