@@ -300,7 +300,7 @@ pub const LIBAFL_CC_LLVM_VERSION: Option<usize> = None;
     };
     let mut cxxflags: Vec<String> = cxxflags.split_whitespace().map(String::from).collect();
 
-    cxxflags.push("-g");
+    cxxflags.push(String::from("-g"));
 
     let edges_map_size: usize = option_env!("LIBAFL_EDGES_MAP_SIZE")
         .map_or(Ok(65536), str::parse)
