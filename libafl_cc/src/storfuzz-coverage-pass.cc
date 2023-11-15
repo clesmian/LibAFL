@@ -281,7 +281,7 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
               BasicBlock::const_iterator End = insertionBB->end();
               int i = 0;
               while(insertionPoint != End && i < insertionBB->size()){
-                if (isa<PHINode>(insertionPoint)){
+                if (isa<PHINode>(*insertionPoint)){
                   insertionPoint++;
                 } else if (insertionPoint->isEHPad()) {
                   insertionPoint++;
