@@ -77,6 +77,51 @@ class StorFuzzCoverage : public ModulePass {
   uint32_t                          map_size = DATA_MAP_SIZE;
   uint32_t                          function_minimum_size = 1;
 
+  bool getInsertionPointInSameBB(Instruction* start, BasicBlock::iterator &insertionPoint){
+    BasicBlock *insertionBB = start->getParent();
+    insertionPoint = start->getIterator();
+    BasicBlock::const_iterator End = insertionBB->end();
+    // Safeguard against infinite loops due to logic errors on my side
+    int i = 0;
+
+    // Ensure that we are not already at the end of the BB
+    if (insertionPoint == End){
+      return false;
+    }
+    ++insertionPoint;
+    while(insertionPoint != End && i < insertionBB->size()){
+      if (!isa<PHINode>(*insertionPoint) && !insertionPoint->isEHPad()) {
+        return true;
+      } else if (insertionBB->isEntryBlock()) {
+        while (insertionPoint != End && i < insertionBB->size() &&
+               (isa<AllocaInst>(*insertionPoint) || isa<DbgInfoIntrinsic>(*insertionPoint) ||
+                isa<PseudoProbeInst>(*insertionPoint))) {
+          if (const AllocaInst *AI = dyn_cast<AllocaInst>(&*insertionPoint)) {
+            if (!AI->isStaticAlloca())
+              break;
+          }
+          i++;
+        }
+        return true;
+      }
+      insertionPoint++;
+      i++;
+    }
+    if(i >= insertionBB->size()){
+      fprintf(stderr, "ERROR: We have exceeded the size of the BB. The question is why?\n");
+      fprintf(stderr, "Start instr: ");
+      start->dump();
+      fprintf(stderr, "Insertion BB: ");
+      insertionBB->dump();
+      return false;
+    }
+    if(insertionPoint == End){
+      return false;
+    } else {
+      return true;
+    }
+  }
+
   /* Function that we never instrument or analyze */
   /* Copied from cmplog pass */
   bool isIgnoreFunction(const llvm::Function *F) {
@@ -275,75 +320,20 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
                 storeInst->dump();
               }
 
-                BasicBlock *insertionBB = valueDefInstruction->getParent();
-                insertionPoint = valueDefInstruction->getIterator();
-                BasicBlock::const_iterator End = insertionBB->end();
-                int i = 0;
-
-                // Try to find insertion point close to value definition
-                if (insertionPoint != End){
-                  ++insertionPoint;
+              if(!getInsertionPointInSameBB(valueDefInstruction, insertionPoint)){
+                fprintf(stderr, "WARNING: Could not find insertion point in BB of value definition function '%s' val: ", F.getName().str().c_str());
+                storedValue->dump();
+                valueDefInstruction->getParent()->dump();
+                if(!getInsertionPointInSameBB(storeInst, insertionPoint)){
+                  // We failed to find an insertion point both close to definition and store, what now???
+                  fprintf(stderr, "ERROR: Could not find insertion point in function '%s' val: ", F.getName().str().c_str());
+                  storedValue->dump();
+                  storeInst->getParent()->dump();
+                  exit(3);
                 }
-                while(insertionPoint != End && i < insertionBB->size()){
-                  if (!isa<PHINode>(*insertionPoint) && !insertionPoint->isEHPad()) {
-                    break;
-                  } else if (insertionBB->isEntryBlock()) {
-                      while (insertionPoint != End && i < insertionBB->size() &&
-                             (isa<AllocaInst>(*insertionPoint) || isa<DbgInfoIntrinsic>(*insertionPoint) ||
-                              isa<PseudoProbeInst>(*insertionPoint))) {
-                        if (const AllocaInst *AI = dyn_cast<AllocaInst>(&*insertionPoint)) {
-                          if (!AI->isStaticAlloca())
-                            break;
-                        }
-                        i++;
-                      }
-                      break;
-                  }
-                  insertionPoint++;
-                  i++;
-                }
-
-                if(insertionPoint == End || i == insertionBB->size()){
-
-                    fprintf(stderr, "WARNING: Could not find insertion point after value definition function '%s' val: ", F.getName().str().c_str());
-                    storedValue->dump();
-                    insertionBB->dump();
-
-                    insertionBB = storeInst->getParent();
-                    insertionPoint = storeInst->getIterator();
-                    End = insertionBB->end();
-                    int i = 0;
-                    if (insertionPoint != End){
-                      ++insertionPoint;
-                    }
-                    // Try to find an insertion point close to the store instruction
-                    while(insertionPoint != End && i < insertionBB->size()){
-                      if (!isa<PHINode>(*insertionPoint) && !insertionPoint->isEHPad()) {
-                        break;
-                      } else if (insertionBB->isEntryBlock()) {
-                          while (insertionPoint != End && i < insertionBB->size() &&
-                                 (isa<AllocaInst>(*insertionPoint) || isa<DbgInfoIntrinsic>(*insertionPoint) ||
-                                  isa<PseudoProbeInst>(*insertionPoint))) {
-                            if (const AllocaInst *AI = dyn_cast<AllocaInst>(&*insertionPoint)) {
-                              if (!AI->isStaticAlloca())
-                                break;
-                            }
-                            i++;
-                          }
-                          break;
-                      }
-                      insertionPoint++;
-                      i++;
-                    }
-                    if(insertionPoint == End || i == insertionBB->size()){
-                        // We failed to find an insertion point both close to definition and store, what now???
-                        fprintf(stderr, "ERROR: Could not find insertion point in function '%s' val: ", F.getName().str().c_str());
-                        storedValue->dump();
-                        insertionBB->dump();
-                        exit(3);
-                    }
-                }
-                IRB.SetInsertPoint(insertionBB, insertionPoint);
+              }
+              BasicBlock *insertionBB = (*insertionPoint).getParent();
+              IRB.SetInsertPoint(insertionBB, insertionPoint);
 
               // TODO: Check for pointer (is this necessary?)
               Value *StoredValue64Bit = IRB.CreateZExtOrTrunc(storedValue, IRB.getInt64Ty());
