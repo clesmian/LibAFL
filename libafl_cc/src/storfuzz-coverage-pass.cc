@@ -281,9 +281,10 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
                 int i = 0;
 
                 // Try to find insertion point close to value definition
-
-                while(&(*insertionPoint) != nullptr && insertionPoint != End && i < insertionBB->size()){
-                  insertionPoint++;
+                if (insertionPoint != End){
+                  ++insertionPoint;
+                }
+                while(insertionPoint != End && i < insertionBB->size()){
                   if (!isa<PHINode>(*insertionPoint) && !insertionPoint->isEHPad()) {
                     break;
                   } else if (insertionBB->isEntryBlock()) {
@@ -297,9 +298,8 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
                         i++;
                       }
                       break;
-                  } else {
-                      break;
                   }
+                  insertionPoint++;
                   i++;
                 }
 
@@ -313,10 +313,11 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
                     insertionPoint = storeInst->getIterator();
                     End = insertionBB->end();
                     int i = 0;
-
+                    if (insertionPoint != End){
+                      ++insertionPoint;
+                    }
                     // Try to find an insertion point close to the store instruction
                     while(insertionPoint != End && i < insertionBB->size()){
-                      insertionPoint++;
                       if (!isa<PHINode>(*insertionPoint) && !insertionPoint->isEHPad()) {
                         break;
                       } else if (insertionBB->isEntryBlock()) {
@@ -330,9 +331,8 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
                             i++;
                           }
                           break;
-                      } else {
-                          break;
                       }
+                      insertionPoint++;
                       i++;
                     }
                     if(insertionPoint == End || i == insertionBB->size()){
@@ -343,7 +343,7 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
                         exit(3);
                     }
                 }
-                IRB.SetInsertPoint((*insertionPoint).getParent(), insertionPoint);
+                IRB.SetInsertPoint(insertionBB, insertionPoint);
 
               // TODO: Check for pointer (is this necessary?)
               Value *StoredValue64Bit = IRB.CreateZExtOrTrunc(storedValue, IRB.getInt64Ty());
