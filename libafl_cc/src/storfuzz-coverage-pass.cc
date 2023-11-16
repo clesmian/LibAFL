@@ -48,9 +48,8 @@
 using namespace llvm;
 
 // To enable: Add `-mllvm --debug_storfuzz_coverage` to cmd-line
-static cl::opt<bool>     Debug("debug_storfuzz_coverage", cl::desc("Debug prints"),
-                               cl::init(false), cl::NotHidden);
-
+static cl::opt<bool> Debug("debug_storfuzz_coverage", cl::desc("Debug prints"),
+                           cl::init(false), cl::NotHidden);
 
 namespace {
 
@@ -61,8 +60,10 @@ class StorFuzzCoverage : public PassInfoMixin<StorFuzzCoverage> {
 #else
 class StorFuzzCoverage : public ModulePass {
  public:
-  static char ID;
-  static llvm::StringRef name() { return "StorFuzzCoverage"; }
+  static char            ID;
+  static llvm::StringRef name() {
+    return "StorFuzzCoverage";
+  }
   StorFuzzCoverage() : ModulePass(ID) {
 #endif
   }
@@ -74,10 +75,11 @@ class StorFuzzCoverage : public ModulePass {
 #endif
 
  protected:
-  uint32_t                          map_size = DATA_MAP_SIZE;
-  uint32_t                          function_minimum_size = 1;
+  uint32_t map_size = DATA_MAP_SIZE;
+  uint32_t function_minimum_size = 1;
 
-  bool getInsertionPointInSameBB(Instruction* start, BasicBlock::iterator &insertionPoint){
+  bool getInsertionPointInSameBB(Instruction          *start,
+                                 BasicBlock::iterator &insertionPoint) {
     BasicBlock *insertionBB = start->getParent();
     insertionPoint = start->getIterator();
     BasicBlock::const_iterator End = insertionBB->end();
@@ -85,20 +87,18 @@ class StorFuzzCoverage : public ModulePass {
     int i = 0;
 
     // Ensure that we are not already at the end of the BB
-    if (insertionPoint == End){
-      return false;
-    }
+    if (insertionPoint == End) { return false; }
     ++insertionPoint;
-    while(insertionPoint != End && i < insertionBB->size()){
+    while (insertionPoint != End && i < insertionBB->size()) {
       if (!isa<PHINode>(*insertionPoint) && !insertionPoint->isEHPad()) {
         return true;
       } else if (insertionBB->isEntryBlock()) {
         while (insertionPoint != End && i < insertionBB->size() &&
-               (isa<AllocaInst>(*insertionPoint) || isa<DbgInfoIntrinsic>(*insertionPoint) ||
+               (isa<AllocaInst>(*insertionPoint) ||
+                isa<DbgInfoIntrinsic>(*insertionPoint) ||
                 isa<PseudoProbeInst>(*insertionPoint))) {
           if (const AllocaInst *AI = dyn_cast<AllocaInst>(&*insertionPoint)) {
-            if (!AI->isStaticAlloca())
-              break;
+            if (!AI->isStaticAlloca()) break;
           }
           i++;
         }
@@ -107,15 +107,17 @@ class StorFuzzCoverage : public ModulePass {
       insertionPoint++;
       i++;
     }
-    if(i >= insertionBB->size()){
-      fprintf(stderr, "ERROR: We have exceeded the size of the BB. The question is why?\n");
+    if (i >= insertionBB->size()) {
+      fprintf(
+          stderr,
+          "ERROR: We have exceeded the size of the BB. The question is why?\n");
       fprintf(stderr, "Start instr: ");
       start->dump();
       fprintf(stderr, "Insertion BB: ");
       insertionBB->dump();
       return false;
     }
-    if(insertionPoint == End){
+    if (insertionPoint == End) {
       return false;
     } else {
       return true;
@@ -190,9 +192,9 @@ llvmGetPassPluginInfo() {
   return {LLVM_PLUGIN_API_VERSION, "StorFuzzCoverage", "v0.1",
           /* lambda to insert our pass into the pass pipeline. */
           [](PassBuilder &PB) {
-    #if LLVM_VERSION_MAJOR <= 13
+  #if LLVM_VERSION_MAJOR <= 13
             using OptimizationLevel = typename PassBuilder::OptimizationLevel;
-    #endif
+  #endif
             PB.registerOptimizerLastEPCallback(
                 [](ModulePassManager &MPM, OptimizationLevel OL) {
                   MPM.addPass(StorFuzzCoverage());
@@ -220,14 +222,12 @@ PreservedAnalyses StorFuzzCoverage::run(Module &M, ModuleAnalysisManager &MAM) {
 #else
 bool StorFuzzCoverage::runOnModule(Module &M) {
 #endif
-  if (getenv("CONFIGURE_MODE")){
-    fprintf(stderr,
-            "WARNING: CONFIGURE_MODE, not doing anything\n");
+  if (getenv("CONFIGURE_MODE")) {
+    fprintf(stderr, "WARNING: CONFIGURE_MODE, not doing anything\n");
     return true;
   }
 
   LLVMContext &C = M.getContext();
-
 
   Type *VoidTy = Type::getVoidTy(C);
 
@@ -235,10 +235,10 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
   IntegerType *Int16Ty = IntegerType::getInt16Ty(C);
   IntegerType *Int32Ty = IntegerType::getInt32Ty(C);
   IntegerType *Int64Ty = IntegerType::getInt64Ty(C);
-  Type *Int8PtrTy = PointerType::getUnqual(IntegerType::getInt8Ty(C));
-  Type *Int16PtrTy = PointerType::getUnqual(IntegerType::getInt16Ty(C));
-  Type *Int32PtrTy = PointerType::getUnqual(IntegerType::getInt32Ty(C));
-  Type *Int64PtrTy = PointerType::getUnqual(IntegerType::getInt64Ty(C));
+  Type        *Int8PtrTy = PointerType::getUnqual(IntegerType::getInt8Ty(C));
+  Type        *Int16PtrTy = PointerType::getUnqual(IntegerType::getInt16Ty(C));
+  Type        *Int32PtrTy = PointerType::getUnqual(IntegerType::getInt32Ty(C));
+  Type        *Int64PtrTy = PointerType::getUnqual(IntegerType::getInt64Ty(C));
   Type *Int128PtrTy = PointerType::getUnqual(IntegerType::getInt128Ty(C));
 
   uint32_t     rand_seed;
@@ -252,31 +252,24 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
   rand_seed = time(NULL);
   srand(rand_seed);
 
-  GlobalVariable *StorFuzzMapPtr =
-      new GlobalVariable(M, PointerType::getUnqual(Int8Ty), false,
-                         GlobalValue::ExternalWeakLinkage, nullptr, "__storfuzz_area_ptr");
-
+  GlobalVariable *StorFuzzMapPtr = new GlobalVariable(
+      M, PointerType::getUnqual(Int8Ty), false,
+      GlobalValue::ExternalWeakLinkage, nullptr, "__storfuzz_area_ptr");
 
   // other constants we need
-  ConstantInt * Mask[8] = {
-      ConstantInt::get(Int8Ty, 1 << 0),
-      ConstantInt::get(Int8Ty, 1 << 1),
-      ConstantInt::get(Int8Ty, 1 << 2),
-      ConstantInt::get(Int8Ty, 1 << 3),
-      ConstantInt::get(Int8Ty, 1 << 4),
-      ConstantInt::get(Int8Ty, 1 << 5),
-      ConstantInt::get(Int8Ty, 1 << 6),
-      ConstantInt::get(Int8Ty, 1 << 7)
-  };
+  ConstantInt *Mask[8] = {
+      ConstantInt::get(Int8Ty, 1 << 0), ConstantInt::get(Int8Ty, 1 << 1),
+      ConstantInt::get(Int8Ty, 1 << 2), ConstantInt::get(Int8Ty, 1 << 3),
+      ConstantInt::get(Int8Ty, 1 << 4), ConstantInt::get(Int8Ty, 1 << 5),
+      ConstantInt::get(Int8Ty, 1 << 6), ConstantInt::get(Int8Ty, 1 << 7)};
 
   /* Instrument all the things! */
 
   int inst_stores = 0;
   // scanForDangerousFunctions(&M);
 
-
-  Type *argTypes[] = {Int32Ty, Int8Ty, Int64Ty};
-  FunctionType *coverageFuncType = FunctionType::get(VoidTy, argTypes, false);
+  Type          *argTypes[] = {Int32Ty, Int8Ty, Int64Ty};
+  FunctionType  *coverageFuncType = FunctionType::get(VoidTy, argTypes, false);
   FunctionCallee coverageFunc =
       M.getOrInsertFunction("__storfuzz_record_value", coverageFuncType);
 
@@ -284,7 +277,7 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
     if (Debug)
       fprintf(stderr, "FUNCTION: %s (%zu)\n", F.getName().str().c_str(),
               F.size());
-    if (isIgnoreFunction(&F)){
+    if (isIgnoreFunction(&F)) {
       if (Debug)
         fprintf(stderr, "Ignoring function %s\n", F.getName().str().c_str());
       continue;
@@ -292,26 +285,26 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
 
     if (F.size() < function_minimum_size) { continue; }
 
-
     for (auto &BB : F) {
       BasicBlock::iterator insertionPoint = BB.getFirstInsertionPt();
       IRBuilder<>          IRB(&(*insertionPoint));
       for (auto &instr : BB) {
         StoreInst *storeInst;
         if ((storeInst = dyn_cast<StoreInst>(&instr))) {
-          // Check that this instruction is not already part of AFL instrumentation
-          if(storeInst->getMetadata("nosanitize") != nullptr)
-            continue;
+          // Check that this instruction is not already part of AFL
+          // instrumentation
+          if (storeInst->getMetadata("nosanitize") != nullptr) continue;
 
-          Value      *storeLocation = storeInst->getPointerOperand();
+          Value *storeLocation = storeInst->getPointerOperand();
           if (!(dyn_cast<AllocaInst>(storeLocation))) {
-            Value       *storedValue = storeInst->getValueOperand();
+            Value *storedValue = storeInst->getValueOperand();
 
             // If the stored value does not stem from an instruction it is not
             // interesting
             Instruction *valueDefInstruction;
             if (!(valueDefInstruction = dyn_cast<Instruction>(storedValue)))
-              // TODO: Check for interesting operations (e.g. not simply a load and store, but some change)
+              // TODO: Check for interesting operations (e.g. not simply a load
+              // and store, but some change)
               continue;
 
             IntegerType *storedType =
@@ -326,13 +319,21 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
                 storeInst->dump();
               }
 
-              if(!getInsertionPointInSameBB(valueDefInstruction, insertionPoint)){
-                fprintf(stderr, "WARNING: Could not find insertion point in BB of value definition function '%s' val: ", F.getName().str().c_str());
+              if (!getInsertionPointInSameBB(valueDefInstruction,
+                                             insertionPoint)) {
+                fprintf(stderr,
+                        "WARNING: Could not find insertion point in BB of "
+                        "value definition function '%s' val: ",
+                        F.getName().str().c_str());
                 storedValue->dump();
                 valueDefInstruction->getParent()->dump();
-                if(!getInsertionPointInSameBB(storeInst, insertionPoint)){
-                  // We failed to find an insertion point both close to definition and store, what now???
-                  fprintf(stderr, "ERROR: Could not find insertion point in function '%s' val: ", F.getName().str().c_str());
+                if (!getInsertionPointInSameBB(storeInst, insertionPoint)) {
+                  // We failed to find an insertion point both close to
+                  // definition and store, what now???
+                  fprintf(stderr,
+                          "ERROR: Could not find insertion point in function "
+                          "'%s' val: ",
+                          F.getName().str().c_str());
                   storedValue->dump();
                   storeInst->getParent()->dump();
                   exit(3);
@@ -342,7 +343,8 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
               IRB.SetInsertPoint(insertionBB, insertionPoint);
 
               // TODO: Check for pointer (is this necessary?)
-              Value *StoredValue64Bit = IRB.CreateZExtOrTrunc(storedValue, IRB.getInt64Ty());
+              Value *StoredValue64Bit =
+                  IRB.CreateZExtOrTrunc(storedValue, IRB.getInt64Ty());
 
               /* Make up location_id */
               cur_loc = RandBelow(map_size);
@@ -350,18 +352,22 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
               CurLoc = ConstantInt::get(Int32Ty, cur_loc);
 
               auto bitmask_selector = RandBelow(7);
-              if(getenv("STORFUZZ_INSTR_STYLE_FUNC")) {
+              if (getenv("STORFUZZ_INSTR_STYLE_FUNC")) {
                 Value       *args[] = {CurLoc, Mask[bitmask_selector],
                                        StoredValue64Bit};
                 Instruction *call = IRB.CreateCall(coverageFunc, args);
                 call->setMetadata(M.getMDKindID("nosanitize"),
                                   MDNode::get(C, None));
               } else {
-
-                Value *Lower16Bit = IRB.CreateZExtOrTrunc(storedValue, IRB.getInt16Ty());
-                dyn_cast<Instruction>(Lower16Bit)->setMetadata(M.getMDKindID("storfuzz_get_val"),
-                                                               MDNode::get(C, None));
-                Value* Upper8Bit = IRB.CreateZExtOrTrunc(IRB.CreateLShr(Lower16Bit, 8), IRB.getInt8Ty()); Value* Lower8Bit = IRB.CreateZExtOrTrunc(Lower16Bit, IRB.getInt8Ty());
+                Value *Lower16Bit =
+                    IRB.CreateZExtOrTrunc(storedValue, IRB.getInt16Ty());
+                dyn_cast<Instruction>(Lower16Bit)
+                    ->setMetadata(M.getMDKindID("storfuzz_get_val"),
+                                  MDNode::get(C, None));
+                Value *Upper8Bit = IRB.CreateZExtOrTrunc(
+                    IRB.CreateLShr(Lower16Bit, 8), IRB.getInt8Ty());
+                Value *Lower8Bit =
+                    IRB.CreateZExtOrTrunc(Lower16Bit, IRB.getInt8Ty());
 
                 Value *ReducedValue;
                 ReducedValue = IRB.CreateXor(Upper8Bit, Lower8Bit);
@@ -382,13 +388,10 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
                     Int8Ty,
 #endif
                     MapPtrLoad,
-                    IRB.CreateXor(
-                        CurLoc,
-                        IRB.CreateZExtOrTrunc(ReducedValue, IRB.getInt32Ty())
-                    )
-                );
-                dyn_cast<Instruction>(MapPtrIdx)->setMetadata(M.getMDKindID("storfuzz_calc_index"),
-                                                              MDNode::get(C, None));
+                    IRB.CreateXor(CurLoc, IRB.CreateZExtOrTrunc(
+                                              ReducedValue, IRB.getInt32Ty())));
+                dyn_cast<Instruction>(MapPtrIdx)->setMetadata(
+                    M.getMDKindID("storfuzz_calc_index"), MDNode::get(C, None));
                 if (getenv("STORFUZZ_VERBOSE")) {
                   fprintf(stderr, "MapPtrIdx: ");
                   MapPtrIdx->dump();
@@ -398,9 +401,9 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
 #if 1  // Threadsafe (this somehow crashes)
                 IRB.CreateAtomicRMW(llvm::AtomicRMWInst::BinOp::Or, MapPtrIdx,
                                     Mask[bitmask_selector],
-#if LLVM_VERSION_MAJOR >= 13
-                    llvm::MaybeAlign(1),
-#endif
+  #if LLVM_VERSION_MAJOR >= 13
+                                    llvm::MaybeAlign(1),
+  #endif
                                     llvm::AtomicOrdering::Monotonic);
 #else  // Not threadsafe (not clear whether this also crashes)
                 LoadInst *BitMapEntry = IRB.CreateLoad(
@@ -425,17 +428,15 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
           }
         }
       }
-//      for (auto &I : BB) {
-//        if (!I.isTerminator()){
-//          Value *V = &I;
-////          I.dump();
-////          V->getType()->isEmptyTy();
-//
-//        }
-//      }
+      //      for (auto &I : BB) {
+      //        if (!I.isTerminator()){
+      //          Value *V = &I;
+      ////          I.dump();
+      ////          V->getType()->isEmptyTy();
+      //
+      //        }
+      //      }
     }
-
-
   }
 
   if (Debug) {
@@ -445,10 +446,9 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
       fprintf(stderr, "Instrumented %d targets.\n", inst_stores);
   }
 
-  if(getenv("STORFUZZ_DUMP_CONVERTED")){
+  if (getenv("STORFUZZ_DUMP_CONVERTED")) {
     raw_ostream &out = outs();
     M.print(out, nullptr);
-
   }
 #ifdef USE_NEW_PM
   return PA;
@@ -459,7 +459,7 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
 
 #ifndef USE_NEW_PM
 static void registerStorFuzzPass(const PassManagerBuilder &,
-                            legacy::PassManagerBase &PM) {
+                                 legacy::PassManagerBase &PM) {
   PM.add(new StorFuzzCoverage());
 }
 
