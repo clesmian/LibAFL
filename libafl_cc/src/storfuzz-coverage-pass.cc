@@ -220,6 +220,12 @@ PreservedAnalyses StorFuzzCoverage::run(Module &M, ModuleAnalysisManager &MAM) {
 #else
 bool StorFuzzCoverage::runOnModule(Module &M) {
 #endif
+  if (getenv("CONFIGURE_MODE")){
+    fprintf(stderr,
+            "WARNING: CONFIGURE_MODE, not doing anything\n");
+    return true;
+  }
+
   LLVMContext &C = M.getContext();
 
 
