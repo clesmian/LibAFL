@@ -224,7 +224,7 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
   // scanForDangerousFunctions(&M);
 
 
-  Type *argTypes[] = {Int16Ty, Int8Ty, Int64Ty};
+  Type *argTypes[] = {Int32Ty, Int8Ty, Int64Ty};
   FunctionType *coverageFuncType = FunctionType::get(VoidTy, argTypes, false);
   FunctionCallee coverageFunc =
       M.getOrInsertFunction("__storfuzz_record_value", coverageFuncType);
