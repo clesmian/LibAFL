@@ -343,15 +343,6 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
 
               // TODO: Check for pointer (is this necessary?)
               Value *StoredValue64Bit = IRB.CreateZExtOrTrunc(storedValue, IRB.getInt64Ty());
-//              Value *Lower16Bit = IRB.CreateZExtOrTrunc(storedValue, IRB.getInt16Ty());
-//              dyn_cast<Instruction>(Lower16Bit)->setMetadata(M.getMDKindID("storfuzz_get_val"),
-//                                      MDNode::get(C, None));
-////              // TODO: Reduce Value to 8 bit
-//              Value* Upper8Bit = IRB.CreateZExtOrTrunc(IRB.CreateLShr(Lower16Bit, 8), IRB.getInt8Ty());
-//              Value* Lower8Bit = IRB.CreateZExtOrTrunc(Lower16Bit, IRB.getInt8Ty());
-//
-//              Value *ReducedValue;
-//              ReducedValue = IRB.CreateXor(Upper8Bit, Lower8Bit);
 
               /* Make up location_id */
               cur_loc = RandBelow(map_size);
@@ -359,61 +350,76 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
               CurLoc = ConstantInt::get(Int32Ty, cur_loc);
 
               auto bitmask_selector = RandBelow(7);
-              Value *args[] = {CurLoc, Mask[bitmask_selector], StoredValue64Bit};
-              Instruction *call = IRB.CreateCall(coverageFunc, args);
-              call->setMetadata(M.getMDKindID("nosanitize"),
-              MDNode::get(C, None));
+              if(getenv("STORFUZZ_INSTR_STYLE_FUNC")) {
+                Value       *args[] = {CurLoc, Mask[bitmask_selector],
+                                       StoredValue64Bit};
+                Instruction *call = IRB.CreateCall(coverageFunc, args);
+                call->setMetadata(M.getMDKindID("nosanitize"),
+                                  MDNode::get(C, None));
+              } else {
 
-              // Get Map location
-//              LoadInst *MapPtrLoad = IRB.CreateLoad(
-//#if LLVM_VERSION_MAJOR >= 14
-//                  PointerType::get(Int8Ty, 0),
-//#endif
-//                  StorFuzzMapPtr);
-//              MapPtrLoad->setMetadata(M.getMDKindID("nosanitize"),
-//                                  MDNode::get(C, None));
-//
-//              // Calculate Index in map
-//              Value *MapPtrIdx;
-//              MapPtrIdx = IRB.CreateGEP(
-//#if LLVM_VERSION_MAJOR >= 14
-//                  Int8Ty,
-//#endif
-//                  MapPtrLoad,
-//                  IRB.CreateXor(
-//                      CurLoc,
-//                      IRB.CreateZExtOrTrunc(ReducedValue, IRB.getInt32Ty())
-//                      )
-//                  );
-//              dyn_cast<Instruction>(MapPtrIdx)->setMetadata(M.getMDKindID("storfuzz_calc_index"),
-//                                     MDNode::get(C, None));
-//              if (getenv("STORFUZZ_VERBOSE")) {
-//                fprintf(stderr, "MapPtrIdx: ");
-//                MapPtrIdx->dump();
-//                insertionBB->dump();
-//              }
-                // Write to map (threadsafe by default)
-#if 1 // Threadsafe (this somehow crashes)
-//              IRB.CreateAtomicRMW(llvm::AtomicRMWInst::BinOp::Or, MapPtrIdx,
-//                                  Mask[bitmask_selector],
-//#if LLVM_VERSION_MAJOR >= 13
-//                                  llvm::MaybeAlign(1),
-//#endif
-//                                  llvm::AtomicOrdering::Monotonic);
-#else // Not threadsafe (not clear whether this also crashes)
-         LoadInst *BitMapEntry = IRB.CreateLoad(
+                Value *Lower16Bit = IRB.CreateZExtOrTrunc(storedValue, IRB.getInt16Ty());
+                dyn_cast<Instruction>(Lower16Bit)->setMetadata(M.getMDKindID("storfuzz_get_val"),
+                                                               MDNode::get(C, None));
+                Value* Upper8Bit = IRB.CreateZExtOrTrunc(IRB.CreateLShr(Lower16Bit, 8), IRB.getInt8Ty()); Value* Lower8Bit = IRB.CreateZExtOrTrunc(Lower16Bit, IRB.getInt8Ty());
+
+                Value *ReducedValue;
+                ReducedValue = IRB.CreateXor(Upper8Bit, Lower8Bit);
+
+                // Get Map location
+                LoadInst *MapPtrLoad = IRB.CreateLoad(
 #if LLVM_VERSION_MAJOR >= 14
-          IRB.getInt8Ty(),
+                    PointerType::get(Int8Ty, 0),
 #endif
-          MapPtrIdx);
-         BitMapEntry->setMetadata(M.getMDKindID("nosanitize"), MDNode::get(C, None));
+                    StorFuzzMapPtr);
+                MapPtrLoad->setMetadata(M.getMDKindID("nosanitize"),
+                                        MDNode::get(C, None));
 
-Value *UpdatedEntry = IRB.CreateOr(BitMapEntry, Mask[bitmask_selector]);
+                // Calculate Index in map
+                Value *MapPtrIdx;
+                MapPtrIdx = IRB.CreateGEP(
+#if LLVM_VERSION_MAJOR >= 14
+                    Int8Ty,
+#endif
+                    MapPtrLoad,
+                    IRB.CreateXor(
+                        CurLoc,
+                        IRB.CreateZExtOrTrunc(ReducedValue, IRB.getInt32Ty())
+                    )
+                );
+                dyn_cast<Instruction>(MapPtrIdx)->setMetadata(M.getMDKindID("storfuzz_calc_index"),
+                                                              MDNode::get(C, None));
+                if (getenv("STORFUZZ_VERBOSE")) {
+                  fprintf(stderr, "MapPtrIdx: ");
+                  MapPtrIdx->dump();
+                  insertionBB->dump();
+                }
+// Write to map (threadsafe by default)
+#if 1  // Threadsafe (this somehow crashes)
+                IRB.CreateAtomicRMW(llvm::AtomicRMWInst::BinOp::Or, MapPtrIdx,
+                                    Mask[bitmask_selector],
+#if LLVM_VERSION_MAJOR >= 13
+                    llvm::MaybeAlign(1),
+#endif
+                                    llvm::AtomicOrdering::Monotonic);
+#else  // Not threadsafe (not clear whether this also crashes)
+                LoadInst *BitMapEntry = IRB.CreateLoad(
+  #if LLVM_VERSION_MAJOR >= 14
+                    IRB.getInt8Ty(),
+  #endif
+                    MapPtrIdx);
+                BitMapEntry->setMetadata(M.getMDKindID("nosanitize"),
+                                         MDNode::get(C, None));
 
-IRB.CreateStore(UpdatedEntry, MapPtrIdx)
-   ->setMetadata(M.getMDKindID("nosanitize"), MDNode::get(C, None));
+                Value *UpdatedEntry =
+                    IRB.CreateOr(BitMapEntry, Mask[bitmask_selector]);
+
+                IRB.CreateStore(UpdatedEntry, MapPtrIdx)
+                    ->setMetadata(M.getMDKindID("nosanitize"),
+                                  MDNode::get(C, None));
 
 #endif
+              }
               inst_stores++;
             }
           }
