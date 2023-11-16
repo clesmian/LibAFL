@@ -230,7 +230,6 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
       M.getOrInsertFunction("__storfuzz_record_value", coverageFuncType);
 
   for (auto &F : M) {
-    int has_calls = 0;
     if (Debug)
       fprintf(stderr, "FUNCTION: %s (%zu)\n", F.getName().str().c_str(),
               F.size());
@@ -304,14 +303,7 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
                   i++;
                 }
 
-                if(&(*insertionPoint) == nullptr) {
-                  // THIS SHOULD NEVER HAPPEN
-
-                  fprintf(stderr, "ERROR: Hit NULLPTR in function '%s' val: ", F.getName().str().c_str());
-                                    storedValue->dump();
-                                    insertionBB->dump();
-                  assert(&(*insertionPoint) != nullptr);
-                } else if(insertionPoint == End || i == insertionBB->size()){
+                if(insertionPoint == End || i == insertionBB->size()){
 
                     fprintf(stderr, "WARNING: Could not find insertion point after value definition function '%s' val: ", F.getName().str().c_str());
                     storedValue->dump();
@@ -323,7 +315,7 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
                     int i = 0;
 
                     // Try to find an insertion point close to the store instruction
-                    while(&(*insertionPoint) != nullptr && insertionPoint != End && i < insertionBB->size()){
+                    while(insertionPoint != End && i < insertionBB->size()){
                       insertionPoint++;
                       if (!isa<PHINode>(*insertionPoint) && !insertionPoint->isEHPad()) {
                         break;
@@ -343,14 +335,7 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
                       }
                       i++;
                     }
-                    if(&(*insertionPoint) == nullptr) {
-                      // This should never happen
-                      fprintf(stderr, "ERROR: Hit NULLPTR in function '%s' val: ", F.getName().str().c_str());
-                                        storedValue->dump();
-                                        insertionBB->dump();
-
-                      assert(&(*insertionPoint) != nullptr);
-                    } else if(insertionPoint == End || i == insertionBB->size()){
+                    if(insertionPoint == End || i == insertionBB->size()){
                         // We failed to find an insertion point both close to definition and store, what now???
                         fprintf(stderr, "ERROR: Could not find insertion point in function '%s' val: ", F.getName().str().c_str());
                         storedValue->dump();
@@ -358,7 +343,7 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
                         exit(3);
                     }
                 }
-                IRB.SetInsertPoint(insertionBB, insertionPoint);
+                IRB.SetInsertPoint((*insertionPoint).getParent(), insertionPoint);
 
               // TODO: Check for pointer (is this necessary?)
               Value *StoredValue64Bit = IRB.CreateZExtOrTrunc(storedValue, IRB.getInt64Ty());
