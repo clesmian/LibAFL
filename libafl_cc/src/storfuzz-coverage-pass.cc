@@ -224,7 +224,11 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
 #endif
   if (getenv("CONFIGURE_MODE")) {
     fprintf(stderr, "WARNING: CONFIGURE_MODE, not doing anything\n");
+#ifdef USE_NEW_PM
+    return PreservedAnalyses::all();
+#else
     return true;
+#endif
   }
 
   LLVMContext &C = M.getContext();
