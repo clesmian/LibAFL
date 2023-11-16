@@ -365,6 +365,9 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
               auto bitmask_selector = RandBelow(7);
               Value *args[] = {CurLoc, Mask[bitmask_selector], StoredValue64Bit};
               Instruction *call = IRB.CreateCall(coverageFunc, args);
+              call->setMetadata(M.getMDKindID("nosanitize"),
+              MDNode::get(C, None));
+
               // Get Map location
 //              LoadInst *MapPtrLoad = IRB.CreateLoad(
 //#if LLVM_VERSION_MAJOR >= 14
