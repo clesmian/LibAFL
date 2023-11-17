@@ -171,8 +171,10 @@ void __afl_map_shm(void) {
 
     __afl_area_ptr[0] = 1;
   } else {
+    if(!getenv("BE_QUIET_ITS_BUILD_TIME")) {
       fprintf(stderr,
               "WARNING: variable for edge coverage shared memory is not set, using fake maps\n");
+    }
   }
 
   if (storfuzz_id_str) {
@@ -219,8 +221,10 @@ void __afl_map_shm(void) {
   } else if (id_str){
     // We only reach this when we have an AFLMap in shared memory.
     // Otherwise, we fake it altogether
-    fprintf(stderr,
-            "WARNING: variable for StorFuzz coverage shared memory is not set. Appending to AFL Map\n");
+    if(!getenv("BE_QUIET_ITS_BUILD_TIME")) {
+      fprintf(stderr,
+              "WARNING: variable for StorFuzz coverage shared memory is not set. Appending to AFL Map\n");
+    }
   }
 
 }

@@ -1,10 +1,13 @@
+use std::env::var;
 use libafl_bolts::ctor;
 use libafl_targets::{map_shared_memory, start_forkserver};
 
 #[cfg(feature = "auto_init_forkserver")]
 #[ctor]
 fn constructor(){
-    println!("LIBAFL_FORKSERVER_AUTO_INIT");
+    if var("BE_QUIET_ITS_BUILD_TIME").is_err() {
+        println!("LIBAFL_FORKSERVER_AUTO_INIT");
+    }
     libafl_start_forkserver();
 }
 
