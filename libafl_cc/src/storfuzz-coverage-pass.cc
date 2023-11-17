@@ -330,7 +330,8 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
                         "value definition function '%s' val: ",
                         F.getName().str().c_str());
                 storedValue->dump();
-                valueDefInstruction->getParent()->dump();
+                if(Debug){ valueDefInstruction->getParent()->dump(); }
+
                 if (!getInsertionPointInSameBB(storeInst, insertionPoint)) {
                   // We failed to find an insertion point both close to
                   // definition and store, what now???
@@ -339,8 +340,8 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
                           "'%s' val: ",
                           F.getName().str().c_str());
                   storedValue->dump();
-                  storeInst->getParent()->dump();
                   exit(3);
+                  if(Debug) { storeInst->getParent()->dump(); }
                 }
               }
               BasicBlock *insertionBB = (*insertionPoint).getParent();
