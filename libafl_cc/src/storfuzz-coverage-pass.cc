@@ -340,8 +340,8 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
                           "'%s' val: ",
                           F.getName().str().c_str());
                   storedValue->dump();
-                  exit(3);
                   if(Debug) { storeInst->getParent()->dump(); }
+                  assert(0);
                 }
               }
               BasicBlock *insertionBB = (*insertionPoint).getParent();
