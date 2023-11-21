@@ -323,14 +323,53 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
                 storeInst->dump();
               }
 
-              if (!getInsertionPointInSameBB(valueDefInstruction,
+              Value *CurLoc;
+              uint32_t bitmask_selector;
+
+              if ((isa<PHINode>(storeLocation))) {
+                PHINode *storeLocationPhi = dyn_cast<PHINode>(storeLocation);
+                insertionPoint = storeLocationPhi->getIterator();
+                while(insertionPoint != storeLocationPhi->getParent()->end() &&
+                       isa<PHINode>(*insertionPoint)) {
+                  insertionPoint++;
+                }
+                assert(insertionPoint != storeLocationPhi->getParent()->end());
+                IRB.SetInsertPoint(storeLocationPhi->getParent(), insertionPoint);
+
+                PHINode *CurLocPhi = IRB.CreatePHI(Int32Ty, storeLocationPhi->getNumIncomingValues());
+                for(uint32_t i = 0; i < storeLocationPhi->getNumIncomingValues(); i++){
+                  // TODO: Create unique mapping from store location to cur_loc id
+                  // Right now the same store location gets a different ID depending on the
+                  // previous BB e.g.:
+                  //
+                  // %x.sink30 = phi ptr [ @x, %sw.bb9 ], [ @x, %sw.bb7 ], [ @y, %sw.bb6 ], [ @y, %while.body ]
+                  // %74 = phi i32 [ 38761, %sw.bb9 ], [ 91148, %sw.bb7 ], [ 19312, %sw.bb6 ], [ 64897, %while.body ], !dbg !197
+                  CurLocPhi->addIncoming(
+                      ConstantInt::get(Int32Ty, RandBelow(map_size)),
+                      storeLocationPhi->getIncomingBlock(i)
+                      );
+                }
+                CurLoc = CurLocPhi;
+
+              } else {
+                /* Make up location_id */
+                cur_loc = RandBelow(map_size);
+                CurLoc = ConstantInt::get(Int32Ty, cur_loc);
+              }
+
+              bitmask_selector = RandBelow(8);
+
+              if ((isa<PHINode>(storeLocation)) ||
+                  !getInsertionPointInSameBB(valueDefInstruction,
                                              insertionPoint)) {
-                fprintf(stderr,
-                        "WARNING: Could not find insertion point in BB of "
-                        "value definition function '%s' val: ",
-                        F.getName().str().c_str());
-                storedValue->dump();
-                if(Debug){ valueDefInstruction->getParent()->dump(); }
+                if(!(isa<PHINode>(storeLocation))) {
+                  fprintf(stderr,
+                          "WARNING: Could not find insertion point in BB of "
+                          "value definition function '%s' val: ",
+                          F.getName().str().c_str());
+                  storedValue->dump();
+                  if (Debug) { valueDefInstruction->getParent()->dump(); }
+                }
 
                 if (!getInsertionPointInSameBB(storeInst, insertionPoint)) {
                   // We failed to find an insertion point both close to
@@ -351,12 +390,6 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
               Value *StoredValue64Bit =
                   IRB.CreateZExtOrTrunc(storedValue, IRB.getInt64Ty());
 
-              /* Make up location_id */
-              cur_loc = RandBelow(map_size);
-              ConstantInt *CurLoc;
-              CurLoc = ConstantInt::get(Int32Ty, cur_loc);
-
-              auto bitmask_selector = RandBelow(7);
               if (getenv("STORFUZZ_INSTR_STYLE_FUNC")) {
                 Value       *args[] = {CurLoc, Mask[bitmask_selector],
                                        StoredValue64Bit};
