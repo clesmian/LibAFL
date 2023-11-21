@@ -325,7 +325,7 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
 
               Value *CurLoc;
               uint32_t bitmask_selector;
-
+              auto storeLocationToID = DenseMap<Value*, ConstantInt*>(4);
               if ((isa<PHINode>(storeLocation))) {
                 PHINode *storeLocationPhi = dyn_cast<PHINode>(storeLocation);
                 insertionPoint = storeLocationPhi->getIterator();
@@ -338,14 +338,23 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
 
                 PHINode *CurLocPhi = IRB.CreatePHI(Int32Ty, storeLocationPhi->getNumIncomingValues());
                 for(uint32_t i = 0; i < storeLocationPhi->getNumIncomingValues(); i++){
-                  // TODO: Create unique mapping from store location to cur_loc id
-                  // Right now the same store location gets a different ID depending on the
-                  // previous BB e.g.:
-                  //
+                  // E.g.:
                   // %x.sink30 = phi ptr [ @x, %sw.bb9 ], [ @x, %sw.bb7 ], [ @y, %sw.bb6 ], [ @y, %while.body ]
-                  // %74 = phi i32 [ 38761, %sw.bb9 ], [ 91148, %sw.bb7 ], [ 19312, %sw.bb6 ], [ 64897, %while.body ], !dbg !197
+                  // %74 = phi i32 [ 12312, %sw.bb9 ], [ 12312, %sw.bb7 ], [ 45645, %sw.bb6 ], [ 45645, %while.body ]
+                  ConstantInt* curLocID;
+                  auto curLocIDIter = storeLocationToID.find(storeLocationPhi->getIncomingValue(i));
+                  if (curLocIDIter == storeLocationToID.end()){
+                    curLocID = ConstantInt::get(Int32Ty, RandBelow(map_size));
+                    storeLocationToID.insert(
+                        std::pair<Value*, ConstantInt*>(storeLocationPhi->getIncomingValue(i),
+                        curLocID)
+                        );
+                  } else {
+                    curLocID = curLocIDIter->getSecond();
+                  }
+
                   CurLocPhi->addIncoming(
-                      ConstantInt::get(Int32Ty, RandBelow(map_size)),
+                      curLocID,
                       storeLocationPhi->getIncomingBlock(i)
                       );
                 }
