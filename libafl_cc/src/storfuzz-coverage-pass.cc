@@ -364,6 +364,9 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
                 call->setMetadata(M.getMDKindID("nosanitize"),
                                   MDNode::get(C, None));
               } else {
+                Value* cmp = IRB.CreateCmp(CmpInst::ICMP_SLT, StoredValue64Bit, ConstantInt::get(Int64Ty, 0x400000));
+                Value* mask = IRB.CreateSelect(cmp, Mask[bitmask_selector], ConstantInt::get(Int8Ty, 0));
+
                 Value *Lower16Bit =
                     IRB.CreateZExtOrTrunc(storedValue, IRB.getInt16Ty());
                 dyn_cast<Instruction>(Lower16Bit)
@@ -403,9 +406,9 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
                   insertionBB->dump();
                 }
 // Write to map (threadsafe by default)
-#if 1  // Threadsafe (this somehow crashes)
+#if 1
                 IRB.CreateAtomicRMW(llvm::AtomicRMWInst::BinOp::Or, MapPtrIdx,
-                                    Mask[bitmask_selector],
+                                    mask,
   #if LLVM_VERSION_MAJOR >= 13
                                     llvm::MaybeAlign(1),
   #endif
@@ -420,7 +423,7 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
                                          MDNode::get(C, None));
 
                 Value *UpdatedEntry =
-                    IRB.CreateOr(BitMapEntry, Mask[bitmask_selector]);
+                    IRB.CreateOr(BitMapEntry, mask);
 
                 IRB.CreateStore(UpdatedEntry, MapPtrIdx)
                     ->setMetadata(M.getMDKindID("nosanitize"),
