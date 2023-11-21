@@ -364,8 +364,18 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
                 call->setMetadata(M.getMDKindID("nosanitize"),
                                   MDNode::get(C, None));
               } else {
-                Value* cmp = IRB.CreateCmp(CmpInst::ICMP_SLT, StoredValue64Bit, ConstantInt::get(Int64Ty, 0x400000));
-                Value* mask = IRB.CreateSelect(cmp, Mask[bitmask_selector], ConstantInt::get(Int8Ty, 0));
+                Value* cmp =
+                    IRB.CreateCmp(
+                        CmpInst::ICMP_SLT,
+                        StoredValue64Bit,
+                        ConstantInt::get(Int64Ty, 0x400000)
+                        );
+                Value* mask =
+                    IRB.CreateSelect(
+                        cmp,
+                        Mask[bitmask_selector],
+                        ConstantInt::get(Int8Ty, 0)
+                        );
 
                 Value *Lower16Bit =
                     IRB.CreateZExtOrTrunc(storedValue, IRB.getInt16Ty());
