@@ -16,6 +16,10 @@ pub fn main() {
 
         dir.pop();
 
+        if env::var("AFL_LLVM_DICT2FILE").is_err() && env::var("AUTODICT_IN_BINARY").is_err(){
+            env::set_var("AFL_LLVM_DICT2FILE", env::current_dir().unwrap().join("libafl.dict").as_os_str());
+        }
+
         let mut cc = ClangWrapper::new();
         if let Some(code) = cc
             .cpp(is_cpp)
@@ -25,6 +29,7 @@ pub fn main() {
             .expect("Failed to parse the command line")
             // Enable libafl's coverage instrumentation
             .add_pass(LLVMPasses::AFLCoverage)
+            .add_pass(LLVMPasses::AutoTokens)
             .add_pass(LLVMPasses::StorFuzzCoverage)
             // .add_arg("-mllvm")
             // .add_arg("-ctx") // Context sensitive coverage
