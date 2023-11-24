@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::env::var;
 use std::fs;
 use std::fs::OpenOptions;
 use std::io::Write;
@@ -23,6 +24,8 @@ use libafl_bolts::{
     },
     Named
 };
+
+use libafl_targets::coverage::autotokens;
 
 use libafl::{
     corpus::{
@@ -88,6 +91,9 @@ use libafl::monitors::SimpleMonitor;
 #[cfg(all(feature = "data-cov-only", feature = "edge-cov-only"))]
 compile_error!("Cannot use features data-cov-only and edge-cov-only together");
 
+use libafl::mutators::Tokens;
+use libafl::mutators::TokenReplace;
+use libafl::state::HasMetadata;
 
 #[derive(Parser)]
 #[derive(Debug)]
@@ -120,6 +126,8 @@ struct Arguments {
     store_queue_metadata: bool,
     #[arg(long, default_value_t = false, help = "Output every log entry instead of only status messages every few seconds")]
     fast_log_output: bool,
+    #[arg(value_name = "FILE", long, short='x', help = "Token file as produced by autotokens pass")]
+    tokenfile: Option<PathBuf>,
 }
 
 
@@ -296,9 +304,32 @@ fn main() {
         &mut objective,
     ).unwrap();
 
+    if var("AFL_NO_AUTODICT").is_err() && state.metadata_map().get::<Tokens>().is_none() {
+            let mut toks = Tokens::default();
+            if let Some(tokenfile) = args.tokenfile.clone(){
+                toks.add_from_file(tokenfile).unwrap();
+            }
+            #[cfg(any(target_os = "linux", target_vendor = "apple"))]
+            {
+                match autotokens() {
+                    Ok(tokens) => {
+                        toks += tokens;
+                    },
+                    Err(e) => eprintln!("Failed to extract autotokens {}", e)
+                }
+            }
+
+            if !toks.is_empty() {
+                println!("Using {} tokens from autotokens pass ", toks.len());
+                state.add_metadata(toks);
+            }
+        }
+
     let mutator = StdMOptMutator::new(
         &mut state,
-        havoc_mutations().merge(tuple_list!(SpliceMutator::new())),
+        havoc_mutations().merge(
+            tuple_list!(SpliceMutator::new(), TokenReplace::new())
+        ),
         7,
         5
     ).unwrap();
