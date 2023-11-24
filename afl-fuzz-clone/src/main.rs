@@ -28,6 +28,8 @@ use libafl_bolts::{
     Named
 };
 
+use libafl_targets::coverage::autotokens;
+
 use clap::Parser;
 use libafl::{
     corpus::{
@@ -108,8 +110,11 @@ compile_error!("Cannot use features data-cov-only and edge-cov-only together");
 use libafl::observers::StdMapObserver;
 #[cfg(feature="variable-data-map-size")]
 use std::num::ParseIntError;
+use libafl::mutators::Tokens;
+use libafl::mutators::TokenReplace;
 use libafl::schedulers::powersched::PowerSchedule;
 use libafl::stages::CalibrationStage;
+use libafl::state::HasMetadata;
 
 #[cfg(feature="variable-data-map-size")]
 fn parse_maybe_hex(s: &str) -> Result<usize, ParseIntError> {
@@ -182,6 +187,8 @@ struct Arguments {
     data_map_size: usize,
     #[arg(long, help = "Fixed seed for RNG (each fuzzer gets its own seed derived from the supplied value)")]
     seed: Option<u64>,
+    #[arg(value_name = "FILE", long, short='x', help = "Token file as produced by autotokens pass")]
+    tokenfile: Option<PathBuf>,
 }
 
 
@@ -229,6 +236,7 @@ fn main() {
     }
 
     let input_dir = vec![args.input_dir];
+    let tokenfile = args.tokenfile;
 
     let mut run_client = |state: Option<_>, mut mgr, core_id: CoreId| {
         #[cfg(not(feature="variable-data-map-size"))]
@@ -423,10 +431,35 @@ fn main() {
 
         let mut executor = TimeoutForkserverExecutor::new(fork_server, timeout).unwrap();
 
+
+        if var("AFL_NO_AUTODICT").is_err() && state.metadata_map().get::<Tokens>().is_none() {
+            let mut toks = Tokens::default();
+            if let Some(tokenfile) = tokenfile.clone(){
+                toks.add_from_file(tokenfile)?;
+            }
+            #[cfg(any(target_os = "linux", target_vendor = "apple"))]
+            {
+                match autotokens() {
+                    Ok(tokens) => {
+                        toks += tokens;
+                    },
+                    Err(e) => eprintln!("Failed to extract autotokens {}", e)
+                }
+            }
+
+            if !toks.is_empty() {
+                println!("Using {} tokens from autotokens pass ", toks.len());
+                state.add_metadata(toks);
+            }
+        }
+
+
         // Uses values from LibAFL fuzzbench fuzzers
         let mutator = StdMOptMutator::new(
             &mut state,
-            havoc_mutations().merge(tuple_list!(SpliceMutator::new())),
+            havoc_mutations().merge(
+                tuple_list!(SpliceMutator::new(), TokenReplace::new())
+            ),
             7,
             5
         )?;
