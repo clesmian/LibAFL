@@ -2,9 +2,9 @@
 resolver = "2"
 
 members = [
-    "afl-fuzz-clone",
+    "storfuzz-multicore",
     "dump-corpus",
-    "zafl_constants",
+    "storfuzz-constants",
     "dump-queue-stats",
     "storfuzz-fuzzbench",
 ]

@@ -23,7 +23,7 @@ libafl = {path="../../LibAFL/libafl", features = []}
 libafl_bolts = {path="../../LibAFL/libafl_bolts"}
 libafl_targets = {path="../../LibAFL/libafl_targets"}
 clap = {version = "4.1.4", features = ["derive"] }
-zafl_constants = {path = "../zafl_constants"}
+zafl_constants = {path = "../storfuzz-constants" }
 shadow-rs = "0.23.0"
 
 [build-dependencies]
