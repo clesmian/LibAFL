@@ -6,6 +6,7 @@ members = [
     "dump-corpus",
     "zafl_constants",
     "dump-queue-stats",
+    "storfuzz-fuzzbench",
 ]
 
 [profile.release]
