@@ -3,7 +3,7 @@ resolver = "2"
 
 members = [
     "storfuzz-multicore",
-    "dump-corpus",
+    "dump-inmem-corpus",
     "storfuzz-constants",
     "dump-queue-stats",
     "storfuzz-fuzzbench",
