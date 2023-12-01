@@ -19,9 +19,9 @@ data-cov-only = []
 edge-cov-only = []
 
 [dependencies]
-libafl = {path="../../LibAFL/libafl", features = []}
-libafl_bolts = {path="../../LibAFL/libafl_bolts"}
-libafl_targets = {path="../../LibAFL/libafl_targets"}
+libafl = {path="../../libafl", features = []}
+libafl_bolts = {path="../../libafl_bolts"}
+libafl_targets = {path="../../libafl_targets"}
 clap = {version = "4.1.4", features = ["derive"] }
 zafl_constants = {path = "../storfuzz_constants" }
 shadow-rs = "0.23.0"

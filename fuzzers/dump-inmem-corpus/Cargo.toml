@@ -8,8 +8,8 @@ build = "build.rs"
 variable-data-map-size = []
 
 [dependencies]
-libafl = {path="../../LibAFL/libafl", features = []}
-libafl_bolts = {path="../../LibAFL/libafl_bolts"}
+libafl = {path="../../libafl", features = []}
+libafl_bolts = {path="../../libafl_bolts"}
 clap = {version = "4.1.4", features = ["derive"] }
 zafl_constants = {path = "../storfuzz_constants" }
 shadow-rs = "0.23.0"
