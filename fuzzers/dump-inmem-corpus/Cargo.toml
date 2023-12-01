@@ -1,0 +1,18 @@
+[package]
+name = "dump-corpus"
+version = "0.1.1"
+edition = "2021"
+build = "build.rs"
+
+[features]
+variable-data-map-size = []
+
+[dependencies]
+libafl = {path="../../LibAFL/libafl", features = []}
+libafl_bolts = {path="../../LibAFL/libafl_bolts"}
+clap = {version = "4.1.4", features = ["derive"] }
+zafl_constants = {path = "../storfuzz-constants" }
+shadow-rs = "0.23.0"
+
+[build-dependencies]
+shadow-rs = "0.23.0"

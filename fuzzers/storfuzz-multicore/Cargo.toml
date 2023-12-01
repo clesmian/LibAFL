@@ -1,0 +1,36 @@
+[package]
+name = "afl-fuzz-clone"
+version = "0.1.1"
+edition = "2021"
+build = "build.rs"
+
+[features]
+default = ["keep-queue-in-memory"]
+variable-data-map-size = []
+# Enables output to nicely formatted tui monitor (has some unsolved issues that lead to hangs)
+tui = ["libafl/tui_monitor"]
+# Enables introspection in libafl (most useful in conjunction with tui)
+introspection = ["libafl/introspection"]
+# Disables storing the queue to disk
+keep-queue-in-memory = []
+# Only evaluate data coverage
+data-cov-only = []
+# Only evaluate edge coverage
+edge-cov-only = []
+
+[dependencies]
+libafl = {path="../../LibAFL/libafl", features = []}
+libafl_bolts = {path="../../LibAFL/libafl_bolts"}
+libafl_targets = {path="../../LibAFL/libafl_targets"}
+clap = {version = "4.1.4", features = ["derive"] }
+zafl_constants = {path = "../storfuzz-constants" }
+shadow-rs = "0.23.0"
+
+[build-dependencies]
+shadow-rs = "0.23.0"
+
+[profile.release]
+lto = true
+codegen-units = 1
+opt-level = 3
+debug = true
