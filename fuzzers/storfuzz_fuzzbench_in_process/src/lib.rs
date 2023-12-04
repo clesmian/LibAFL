@@ -12,116 +12,88 @@ use std::{
     fs::{self, File, OpenOptions},
     io::{self, Read, Write},
     path::PathBuf,
-    process,
 };
 
-use clap::{Arg, Command};
+use clap::Parser;
 use libafl::{
     corpus::{Corpus, InMemoryOnDiskCorpus, OnDiskCorpus},
     events::SimpleRestartingEventManager,
     executors::{inprocess::InProcessExecutor, ExitKind, TimeoutExecutor},
-    feedback_or,
-    feedbacks::{CrashFeedback, MaxMapFeedback, TimeFeedback},
+    feedback_or, feedback_and_fast,
+    feedbacks::{CrashFeedback, MaxMapFeedback, TimeFeedback, TimeoutFeedback, ConstFeedback},
     fuzzer::{Fuzzer, StdFuzzer},
     inputs::{BytesInput, HasTargetBytes},
     monitors::SimpleMonitor,
     mutators::{
-        scheduled::havoc_mutations, token_mutations::I2SRandReplace, tokens_mutations,
-        StdMOptMutator, StdScheduledMutator, Tokens,
+        scheduled::havoc_mutations, tokens_mutations,
+        StdMOptMutator, Tokens,
     },
     observers::{HitcountsMapObserver, TimeObserver},
     schedulers::{
         powersched::PowerSchedule, IndexesLenTimeMinimizerScheduler, StdWeightedScheduler,
     },
     stages::{
-        calibrate::CalibrationStage, power::StdPowerMutationalStage, StdMutationalStage,
-        TracingStage,
+        calibrate::CalibrationStage, power::StdPowerMutationalStage,
     },
     state::{HasCorpus, HasMetadata, StdState},
     Error,
 };
-use libafl_bolts::{
-    current_nanos, current_time,
-    os::dup2,
-    rands::StdRand,
-    shmem::{ShMemProvider, StdShMemProvider},
-    tuples::{tuple_list, Merge},
-    AsSlice,
-};
+use libafl::feedbacks::AflMapFeedback;
+use libafl::observers::MultiMapObserver;
+use libafl::prelude::MapFeedbackMetadata;
+use libafl::state::HasNamedMetadata;
+use libafl_bolts::{current_nanos, current_time, os::dup2, rands::StdRand, shmem::{ShMemProvider, StdShMemProvider}, tuples::{tuple_list, Merge}, AsSlice, Named};
 #[cfg(any(target_os = "linux", target_vendor = "apple"))]
 use libafl_targets::autotokens;
 use libafl_targets::{
-    libfuzzer_initialize, libfuzzer_test_one_input, std_edges_map_observer, CmpLogObserver,
+    libfuzzer_initialize, libfuzzer_test_one_input, std_edges_map_observer, std_storfuzz_map_observer,
+    storfuzz_map_mut_slice, edges_map_mut_slice
 };
 #[cfg(unix)]
 use nix::{self, unistd::dup};
 
+#[derive(Parser)]
+#[derive(Debug)]
+#[command(about = "An AFL-like fuzzer built for fuzzbench")]
+struct Arguments {
+    #[arg(short, long, value_name = "PATH")]
+    input_dir: PathBuf,
+    #[arg(short, long, value_name = "PATH")]
+    output_dir: PathBuf,
+    #[arg(short, long, default_value = "", value_name = "PATH", help = "Put '-' for stdout")]
+    debug_logfile: String,
+    #[arg(long, default_value_t = cfg!(feature = "edge-cov-only"), help = "If enabled, the fuzzer disregards any coverage generated from data.", group = "coverage-selection")]
+    disregard_data: bool,
+    #[arg(long, default_value_t = cfg!(feature = "data-cov-only"), help = "If enabled, the fuzzer disregards any coverage generated from control-flow.", group = "coverage-selection")]
+    disregard_edges: bool,
+    #[arg(long, requires = "coverage-selection", default_value_t = false, help = "Do not evaluate coverage if we disregard it")]
+    fast_disregard: bool,
+    #[arg(long, short, default_value_t = 1000, help = "Timeout value in milliseconds")]
+    timeout: u64,
+    #[arg(long, short = 'T', default_value_t = false, help = "Consider timeouts to be solutions")]
+    timeouts_are_solutions: bool,
+    #[cfg(not(feature = "keep-queue-in-memory"))]
+    #[arg(long, short = 'm', default_value_t = false, help = "Store metadata of queue entries on disk")]
+    store_queue_metadata: bool,
+    #[arg(value_name = "FILE", long, short='x', help = "Token file as produced by autotokens pass")]
+    tokenfile: Option<PathBuf>,
+    #[arg()]
+    remaining: Option<Vec<String>>
+}
+
 /// The fuzzer main (as `no_mangle` C function)
 #[no_mangle]
 pub extern "C" fn libafl_main() {
-    // Registry the metadata types used in this fuzzer
-    // Needed only on no_std
-    // unsafe { RegistryBuilder::register::<Tokens>(); }
-
-    let res = match Command::new(env!("CARGO_PKG_NAME"))
-        .version(env!("CARGO_PKG_VERSION"))
-        .author("AFLplusplus team")
-        .about("LibAFL-based fuzzer for Fuzzbench")
-        .arg(
-            Arg::new("out")
-                .short('o')
-                .long("output")
-                .help("The directory to place finds in ('corpus')"),
-        )
-        .arg(
-            Arg::new("in")
-                .short('i')
-                .long("input")
-                .help("The directory to read initial inputs from ('seeds')"),
-        )
-        .arg(
-            Arg::new("tokens")
-                .short('x')
-                .long("tokens")
-                .help("A file to read tokens from, to be used during fuzzing"),
-        )
-        .arg(
-            Arg::new("logfile")
-                .short('l')
-                .long("logfile")
-                .help("Duplicates all output to this file")
-                .default_value("libafl.log"),
-        )
-        .arg(
-            Arg::new("timeout")
-                .short('t')
-                .long("timeout")
-                .help("Timeout for each individual execution, in milliseconds")
-                .default_value("1200"),
-        )
-        .arg(Arg::new("remaining"))
-        .try_get_matches()
-    {
-        Ok(res) => res,
-        Err(err) => {
-            println!(
-                "Syntax: {}, [-x dictionary] -o corpus_dir -i seed_dir\n{:?}",
-                env::current_exe()
-                    .unwrap_or_else(|_| "fuzzer".into())
-                    .to_string_lossy(),
-                err,
-            );
-            return;
-        }
-    };
+    let args = Arguments::parse();
+    println!("{:#?}", args);
 
     println!(
         "Workdir: {:?}",
         env::current_dir().unwrap().to_string_lossy().to_string()
     );
 
-    if let Some(filenames) = res.get_many::<String>("remaining") {
-        let filenames: Vec<&str> = filenames.map(String::as_str).collect();
+    if let Some(filenames) = args.remaining {
+        let filenames: Vec<&str> = filenames.iter().map(String::as_str).collect();
         if !filenames.is_empty() {
             run_testcases(&filenames);
             return;
@@ -129,11 +101,8 @@ pub extern "C" fn libafl_main() {
     }
 
     // For fuzzbench, crashes and finds are inside the same `corpus` directory, in the "queue" and "crashes" subdir.
-    let mut out_dir = PathBuf::from(
-        res.get_one::<String>("out")
-            .expect("The --output parameter is missing")
-            .to_string(),
-    );
+    let mut out_dir = args.output_dir;
+
     if fs::create_dir(&out_dir).is_err() {
         println!("Out dir at {:?} already exists.", &out_dir);
         if !out_dir.is_dir() {
@@ -145,29 +114,23 @@ pub extern "C" fn libafl_main() {
     crashes.push("crashes");
     out_dir.push("queue");
 
-    let in_dir = PathBuf::from(
-        res.get_one::<String>("in")
-            .expect("The --input parameter is missing")
-            .to_string(),
-    );
+    let in_dir = args.input_dir;
     if !in_dir.is_dir() {
         println!("In dir at {:?} is not a valid directory!", &in_dir);
         return;
     }
 
-    let tokens = res.get_one::<String>("tokens").map(PathBuf::from);
+    let timeout = Duration::from_millis(args.timeout);
 
-    let logfile = PathBuf::from(res.get_one::<String>("logfile").unwrap().to_string());
+    let log =
+        if !args.debug_logfile.is_empty() {
+            let debug_log_path = out_dir.clone().join(args.debug_logfile.clone()).to_str().unwrap().to_owned();
+            Some(PathBuf::from(debug_log_path))
+        } else {
+            None
+        };
 
-    let timeout = Duration::from_millis(
-        res.get_one::<String>("timeout")
-            .unwrap()
-            .to_string()
-            .parse()
-            .expect("Could not parse timeout in milliseconds"),
-    );
-
-    fuzz(out_dir, crashes, &in_dir, tokens, &logfile, timeout)
+    fuzz(out_dir, crashes, &in_dir, args.tokenfile, log, timeout, args.timeouts_are_solutions, args.disregard_data, args.disregard_edges, args.fast_disregard, args.store_queue_metadata)
         .expect("An error occurred while fuzzing");
 }
 
@@ -201,27 +164,34 @@ fn fuzz(
     objective_dir: PathBuf,
     seed_dir: &PathBuf,
     tokenfile: Option<PathBuf>,
-    logfile: &PathBuf,
+    logfile: Option<PathBuf>,
     timeout: Duration,
+    timeouts_are_solutions: bool,
+    disregard_data: bool,
+    disregard_edges: bool,
+    fast_disregard: bool,
+    store_queue_metadata: bool
 ) -> Result<(), Error> {
-    let log = RefCell::new(OpenOptions::new().append(true).create(true).open(logfile)?);
 
-    #[cfg(unix)]
     let mut stdout_cpy = unsafe {
         let new_fd = dup(io::stdout().as_raw_fd())?;
         File::from_raw_fd(new_fd)
     };
-    #[cfg(unix)]
     let file_null = File::open("/dev/null")?;
 
+    let log = match logfile.clone() {
+        Some(logfile_path) => RefCell::new(OpenOptions::new().append(true).create(true).open(logfile_path)?),
+        None => RefCell::new(OpenOptions::new().append(true).open("/dev/null")?)
+    };
+
     // 'While the monitor are state, they are usually used in the broker - which is likely never restarted
-    let monitor = SimpleMonitor::new(|s| {
-        #[cfg(unix)]
-        writeln!(&mut stdout_cpy, "{s}").unwrap();
-        #[cfg(windows)]
-        println!("{s}");
-        writeln!(log.borrow_mut(), "{:?} {s}", current_time()).unwrap();
-    });
+    let monitor = SimpleMonitor::with_user_monitor(
+        |s| {
+            writeln!(&mut stdout_cpy, "{s}").unwrap();
+            writeln!(log.borrow_mut(), "{:?} {s}", current_time()).unwrap();
+        },
+        true
+    );
 
     // We need a shared map to store our state before a crash.
     // This way, we are able to continue fuzzing afterwards.
@@ -244,27 +214,40 @@ fn fuzz(
     // Create an observation channel using the coverage map
     // We don't use the hitcounts (see the Cargo.toml, we use pcguard_edges)
     let edges_observer = HitcountsMapObserver::new(unsafe { std_edges_map_observer("edges") });
+    let data_observer = unsafe {std_storfuzz_map_observer("data")};
+    let calibration_observer = MultiMapObserver::new("calibration",
+                                                     unsafe {
+                                                         vec!{edges_map_mut_slice(), storfuzz_map_mut_slice()}
+                                                     });
 
     // Create an observation channel to keep track of the execution time
     let time_observer = TimeObserver::new("time");
 
-    let cmplog_observer = CmpLogObserver::new("cmplog", true);
+    let edge_feedback = MaxMapFeedback::tracking(&edges_observer, true, false);
+    let mut data_feedback = AflMapFeedback::tracking(&data_observer, true, false);
+    data_feedback.set_is_bitmap(true);
+    let data_feedback = data_feedback;
 
-    let map_feedback = MaxMapFeedback::tracking(&edges_observer, true, false);
 
-    let calibration = CalibrationStage::new(&map_feedback);
+    let calibration_feedback = AflMapFeedback::new(&calibration_observer);
+    let calibration_stage = CalibrationStage::new(&calibration_feedback);
 
     // Feedback to rate the interestingness of an input
     // This one is composed by two Feedbacks in OR
     let mut feedback = feedback_or!(
-        // New maximization map feedback linked to the edges observer and the feedback state
-        map_feedback,
-        // Time feedback, this one does not need a feedback state
+        feedback_and_fast!(ConstFeedback::new(!(disregard_edges && fast_disregard)),
+                feedback_and_fast!(edge_feedback, ConstFeedback::new(!disregard_edges))),
+        feedback_and_fast!(ConstFeedback::new(!(disregard_data && fast_disregard)),
+                feedback_and_fast!(data_feedback, ConstFeedback::new(!disregard_data))),
+            // Time feedback, this one does not need a feedback state
         TimeFeedback::with_observer(&time_observer)
     );
 
     // A feedback to choose if an input is a solution or not
-    let mut objective = CrashFeedback::new();
+    let mut objective = feedback_or!(
+        CrashFeedback::new(),
+        feedback_and_fast!(ConstFeedback::new(timeouts_are_solutions), TimeoutFeedback::new())
+    );
 
     // If not restarting, create a State from scratch
     let mut state = state.unwrap_or_else(|| {
@@ -272,7 +255,11 @@ fn fuzz(
             // RNG
             StdRand::with_seed(current_nanos()),
             // Corpus that will be evolved, we keep it in memory for performance
-            InMemoryOnDiskCorpus::new(corpus_dir).unwrap(),
+            if store_queue_metadata{
+                InMemoryOnDiskCorpus::new(corpus_dir).unwrap()
+            } else {
+                InMemoryOnDiskCorpus::no_meta(corpus_dir).unwrap()
+            },
             // Corpus in which we store solutions (crashes in this example),
             // on disk so the user can get them after stopping the fuzzer
             OnDiskCorpus::new(objective_dir).unwrap(),
@@ -294,9 +281,6 @@ fn fuzz(
         println!("Warning: LLVMFuzzerInitialize failed with -1");
     }
 
-    // Setup a randomic Input2State stage
-    let i2s = StdMutationalStage::new(StdScheduledMutator::new(tuple_list!(I2SRandReplace::new())));
-
     // Setup a MOPT mutator
     let mutator = StdMOptMutator::new(
         &mut state,
@@ -307,10 +291,17 @@ fn fuzz(
 
     let power = StdPowerMutationalStage::new(mutator);
 
+    // Ensure that combined_feedback is present in the metadata map of the state
+    state.add_named_metadata(
+        // Doesn't really matter as it is overwritten anyways
+        MapFeedbackMetadata::<u8>::new(0),
+        &*calibration_feedback.name().to_string(),
+    );
+
     // A minimization+queue policy to get testcasess from the corpus
     let scheduler = IndexesLenTimeMinimizerScheduler::new(StdWeightedScheduler::with_schedule(
         &mut state,
-        &edges_observer,
+        &calibration_observer,
         Some(PowerSchedule::FAST),
     ));
 
@@ -325,13 +316,12 @@ fn fuzz(
         ExitKind::Ok
     };
 
-    let mut tracing_harness = harness;
 
     // Create the executor for an in-process function with one observer for edge coverage and one for the execution time
     let mut executor = TimeoutExecutor::new(
         InProcessExecutor::new(
             &mut harness,
-            tuple_list!(edges_observer, time_observer),
+            tuple_list!(edges_observer, data_observer, calibration_observer, time_observer),
             &mut fuzzer,
             &mut state,
             &mut mgr,
@@ -339,21 +329,8 @@ fn fuzz(
         timeout,
     );
 
-    // Setup a tracing stage in which we log comparisons
-    let tracing = TracingStage::new(TimeoutExecutor::new(
-        InProcessExecutor::new(
-            &mut tracing_harness,
-            tuple_list!(cmplog_observer),
-            &mut fuzzer,
-            &mut state,
-            &mut mgr,
-        )?,
-        // Give it more time!
-        timeout * 10,
-    ));
-
     // The order of the stages matter!
-    let mut stages = tuple_list!(calibration, tracing, i2s, power);
+    let mut stages = tuple_list!(calibration_stage, power);
 
     // Read tokens
     if state.metadata_map().get::<Tokens>().is_none() {
@@ -375,10 +352,7 @@ fn fuzz(
     if state.must_load_initial_inputs() {
         state
             .load_initial_inputs(&mut fuzzer, &mut executor, &mut mgr, &[seed_dir.clone()])
-            .unwrap_or_else(|_| {
-                println!("Failed to load initial corpus at {:?}", &seed_dir);
-                process::exit(0);
-            });
+            .unwrap();
         println!("We imported {} inputs from disk.", state.corpus().count());
     }
 
@@ -392,7 +366,9 @@ fn fuzz(
         }
     }
     // reopen file to make sure we're at the end
-    log.replace(OpenOptions::new().append(true).create(true).open(logfile)?);
+    if logfile.is_some() {
+        log.replace(OpenOptions::new().append(true).create(true).open(logfile.unwrap())?);
+    }
 
     fuzzer.fuzz_loop(&mut stages, &mut executor, &mut state, &mut mgr)?;
 
