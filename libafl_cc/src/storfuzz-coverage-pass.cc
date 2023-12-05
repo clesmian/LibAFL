@@ -27,6 +27,7 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/MathExtras.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/StringSet.h"
 #include "llvm/Support/FormatVariadic.h"
 
 // Without this, Can't build with llvm-14 & old PM
@@ -277,7 +278,60 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
   FunctionCallee coverageFunc =
       M.getOrInsertFunction("__storfuzz_record_value", coverageFuncType);
 
+  StringSet WeakenFunctions;
+  WeakenFunctions.insert("main");
+
   for (auto &F : M) {
+    // Weaken functions if requested (code by tholl)
+    if (WeakenFunctions.contains(F.getName())) {
+      auto PreviousLinkage = F.getLinkage();
+      std::string PreviousLinkageDescription = "";
+      switch (PreviousLinkage) {
+        // Appending linkage cannot be merged
+        case GlobalValue::LinkageTypes::AppendingLinkage:
+          errs() << "Cannot weaken " << F.getName() << " in " << M.getName() << ", symbol has appending linkage\n";
+          break;
+        // These are weaker or equivalent to WeakAnyLinkage
+        case GlobalValue::LinkageTypes::InternalLinkage:
+          errs() << "Cannot weaken " << F.getName() << " in " << M.getName() << ", symbol already has internal linkage\n";
+          break;
+        case GlobalValue::LinkageTypes::PrivateLinkage:
+          errs() << "Cannot weaken " << F.getName() << " in " << M.getName() << ", symbol already has private linkage\n";
+          break;
+        case GlobalValue::LinkageTypes::AvailableExternallyLinkage:
+          errs() << "Cannot weaken " << F.getName() << " in " << M.getName() << ", symbol is already marked as 'available externally'\n";
+          break;
+        case GlobalValue::LinkageTypes::WeakAnyLinkage:
+          errs() << "Cannot weaken " << F.getName() << " in " << M.getName() << ", symbol is already marked as weak\n";
+          break;
+        case GlobalValue::LinkageTypes::LinkOnceAnyLinkage:
+          errs() << "Cannot weaken " << F.getName() << " in " << M.getName() << ", symbol is already marked as link-once\n";
+          break;
+        case GlobalValue::LinkageTypes::ExternalWeakLinkage:
+          errs() << "Cannot weaken " << F.getName() << " in " << M.getName() << ", symbol is already marked as weak and extern\n";
+          break;
+        case GlobalValue::LinkageTypes::CommonLinkage:
+          errs() << "Cannot weaken " << F.getName() << " in " << M.getName() << ", function is marked as common (this should not be possible!)\n";
+          break;
+        // These must be weakened.
+        case GlobalValue::LinkageTypes::ExternalLinkage:
+          PreviousLinkageDescription = "external";
+          break;
+        case GlobalValue::LinkageTypes::LinkOnceODRLinkage:
+          PreviousLinkageDescription = "link-once (ODR)";
+          break;
+        case GlobalValue::LinkageTypes::WeakODRLinkage:
+          PreviousLinkageDescription = "weak (ODR)";
+          break;
+      }
+      if (!PreviousLinkageDescription.empty()) {
+        errs() << "Dropping linkage of " << F.getName() << " in " << M.getName() << " from " << PreviousLinkageDescription << " to weak linkage\n";
+        F.setLinkage(GlobalValue::LinkageTypes::WeakAnyLinkage);
+        GlobalAlias::create(F.getType(), /* AddrSpace = */ 0, PreviousLinkage, "__storfuzz_original_" + F.getName(), &F, &M);
+      }
+    }
+    // End of weaken functions
+
     if (Debug)
       fprintf(stderr, "FUNCTION: %s (%zu)\n", F.getName().str().c_str(),
               F.size());
