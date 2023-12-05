@@ -23,7 +23,7 @@ use libafl::{
     feedbacks::{CrashFeedback, MaxMapFeedback, TimeFeedback, TimeoutFeedback, ConstFeedback},
     fuzzer::{Fuzzer, StdFuzzer},
     inputs::{BytesInput, HasTargetBytes},
-    monitors::SimpleMonitor,
+    monitors::{SimpleMonitor, OnDiskTOMLMonitor},
     mutators::{
         scheduled::havoc_mutations, tokens_mutations,
         StdMOptMutator, Tokens,
@@ -130,7 +130,9 @@ pub extern "C" fn libafl_main() {
             None
         };
 
-    fuzz(out_dir, crashes, &in_dir, args.tokenfile, log, timeout, args.timeouts_are_solutions, args.disregard_data, args.disregard_edges, args.fast_disregard, args.store_queue_metadata)
+    let stats_file = out_dir.clone().join("stats.toml");
+
+    fuzz(out_dir, crashes, &in_dir, args.tokenfile, log, stats_file, timeout, args.timeouts_are_solutions, args.disregard_data, args.disregard_edges, args.fast_disregard, args.store_queue_metadata)
         .expect("An error occurred while fuzzing");
 }
 
@@ -165,6 +167,7 @@ fn fuzz(
     seed_dir: &PathBuf,
     tokenfile: Option<PathBuf>,
     logfile: Option<PathBuf>,
+    stats_file: PathBuf,
     timeout: Duration,
     timeouts_are_solutions: bool,
     disregard_data: bool,
@@ -185,12 +188,15 @@ fn fuzz(
     };
 
     // 'While the monitor are state, they are usually used in the broker - which is likely never restarted
-    let monitor = SimpleMonitor::with_user_monitor(
-        |s| {
-            writeln!(&mut stdout_cpy, "{s}").unwrap();
-            writeln!(log.borrow_mut(), "{:?} {s}", current_time()).unwrap();
-        },
-        true
+    let monitor = OnDiskTOMLMonitor::new(
+        stats_file,
+        SimpleMonitor::with_user_monitor(
+            |s| {
+                writeln!(&mut stdout_cpy, "{s}").unwrap();
+                writeln!(log.borrow_mut(), "{:?} {s}", current_time()).unwrap();
+            },
+            true
+        )
     );
 
     // We need a shared map to store our state before a crash.
