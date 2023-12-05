@@ -9,6 +9,10 @@ __attribute__((weak)) void __sanitizer_cov_trace_pc_guard(uint32_t *guard) {
 }
 
 extern void libafl_main(void);
+
+__attribute__((weak)) int __storfuzz_original_main(int argc, char **argv) {
+  return 42;
+};
 extern int __storfuzz_original_main(int argc, char **argv);
 
 int main(int argc, char **argv) {
