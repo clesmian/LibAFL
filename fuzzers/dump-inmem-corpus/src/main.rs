@@ -180,7 +180,7 @@ fn main() {
         let edge_cov_observer =
             HitcountsMapObserver::new(ConstMapObserver::<_, CODE_MAP_SIZE>::new(
             // Must be the same name for all fuzzing instances with the same configuration, otherwise the whole thing crashes
-            "shared_mem_edges",
+            "edges",
             shmem_edges,
         ));
 
@@ -188,14 +188,14 @@ fn main() {
             let data_cov_observer = unsafe {
                 StdMapObserver::<_, false>::new(
                     // Must be the same name for all fuzzing instances with the same configuration, otherwise the whole thing crashes
-                    "shared_mem_data",
+                    "data",
                     shmem_data,
                 )
             };
         #[cfg(not(feature="variable-data-map-size"))]
             let data_cov_observer = ConstMapObserver::<_, DEFAULT_DATA_MAP_SIZE>::new(
                 // Must be the same name for all fuzzing instances with the same configuration, otherwise the whole thing crashes
-                "shared_mem_data",
+                "data",
                 shmem_data,
             );
 
