@@ -39,6 +39,7 @@ use libafl::{
     state::{HasCorpus, HasMetadata, StdState},
     Error,
 };
+use libafl::monitors::OnDiskTOMLMonitor;
 use libafl_bolts::{
     current_nanos, current_time,
     os::dup2,
@@ -140,6 +141,9 @@ pub extern "C" fn libafl_main() {
             return;
         }
     }
+
+    let stats_file = out_dir.clone().join("stats.toml");
+
     let mut crashes = out_dir.clone();
     crashes.push("crashes");
     out_dir.push("queue");
@@ -166,7 +170,7 @@ pub extern "C" fn libafl_main() {
             .expect("Could not parse timeout in milliseconds"),
     );
 
-    fuzz(out_dir, crashes, &in_dir, tokens, &logfile, timeout)
+    fuzz(out_dir, crashes, &in_dir, tokens, &logfile, &stats_file, timeout)
         .expect("An error occurred while fuzzing");
 }
 
@@ -201,6 +205,7 @@ fn fuzz(
     seed_dir: &PathBuf,
     tokenfile: Option<PathBuf>,
     logfile: &PathBuf,
+    stats_file: &PathBuf,
     timeout: Duration,
 ) -> Result<(), Error> {
     let log = RefCell::new(OpenOptions::new().append(true).create(true).open(logfile)?);
@@ -214,13 +219,19 @@ fn fuzz(
     let file_null = File::open("/dev/null")?;
 
     // 'While the monitor are state, they are usually used in the broker - which is likely never restarted
-    let monitor = SimpleMonitor::new(|s| {
-        #[cfg(unix)]
-        writeln!(&mut stdout_cpy, "{s}").unwrap();
-        #[cfg(windows)]
-        println!("{s}");
-        writeln!(log.borrow_mut(), "{:?} {s}", current_time()).unwrap();
-    });
+    let monitor = OnDiskTOMLMonitor::new(
+        stats_file,
+        SimpleMonitor::with_user_monitor(
+            |s| {
+                #[cfg(unix)]
+                writeln!(&mut stdout_cpy, "{s}").unwrap();
+                #[cfg(windows)]
+                println!("{s}");
+                writeln!(log.borrow_mut(), "{:?} {s}", current_time()).unwrap();
+            },
+            true
+        )
+    );
 
     // We need a shared map to store our state before a crash.
     // This way, we are able to continue fuzzing afterwards.
