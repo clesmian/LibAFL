@@ -116,6 +116,9 @@ pub extern "C" fn libafl_main() {
             return;
         }
     }
+
+    let stats_file = out_dir.clone().join("stats.toml");
+
     let mut crashes = out_dir.clone();
     crashes.push("crashes");
     out_dir.push("queue");
@@ -135,8 +138,6 @@ pub extern "C" fn libafl_main() {
         } else {
             None
         };
-
-    let stats_file = out_dir.clone().join("stats.toml");
 
     fuzz(out_dir, crashes, &in_dir, args.tokenfile, log, stats_file, timeout, args.timeouts_are_solutions, args.disregard_data, args.disregard_edges, args.fast_disregard, args.store_queue_metadata)
         .expect("An error occurred while fuzzing");
