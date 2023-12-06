@@ -14,7 +14,7 @@ use std::{
     path::PathBuf,
 };
 
-use clap::Parser;
+use clap::{Parser,CommandFactory};
 use libafl::{
     corpus::{Corpus, InMemoryOnDiskCorpus, OnDiskCorpus},
     events::SimpleRestartingEventManager,
@@ -57,9 +57,9 @@ use nix::{self, unistd::dup};
 #[command(about = "An AFL-like fuzzer built for fuzzbench")]
 struct Arguments {
     #[arg(short, long, value_name = "PATH")]
-    input_dir: PathBuf,
+    input_dir: Option<PathBuf>,
     #[arg(short, long, value_name = "PATH")]
-    output_dir: PathBuf,
+    output_dir: Option<PathBuf>,
     #[arg(short, long, default_value = "", value_name = "PATH", help = "Put '-' for stdout")]
     debug_logfile: String,
     #[arg(long, default_value_t = cfg!(feature = "edge-cov-only"), help = "If enabled, the fuzzer disregards any coverage generated from data.", group = "coverage-selection")]
@@ -100,8 +100,14 @@ pub extern "C" fn libafl_main() {
         }
     }
 
+    if args.output_dir.is_none() || args.input_dir.is_none() {
+        let mut cmd =  Arguments::command();
+        cmd.print_help().expect("Failed printing help. Something must be seriously wrong!");
+        return;
+    }
+
     // For fuzzbench, crashes and finds are inside the same `corpus` directory, in the "queue" and "crashes" subdir.
-    let mut out_dir = args.output_dir;
+    let mut out_dir = args.output_dir.unwrap();
 
     if fs::create_dir(&out_dir).is_err() {
         println!("Out dir at {:?} already exists.", &out_dir);
@@ -114,7 +120,7 @@ pub extern "C" fn libafl_main() {
     crashes.push("crashes");
     out_dir.push("queue");
 
-    let in_dir = args.input_dir;
+    let in_dir = args.input_dir.unwrap();
     if !in_dir.is_dir() {
         println!("In dir at {:?} is not a valid directory!", &in_dir);
         return;
