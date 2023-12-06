@@ -1,5 +1,4 @@
 //! A singlethreaded libfuzzer-like fuzzer that can auto-restart.
-// TODO: Incorporate logic from storfuzz_fuzzbench
 use mimalloc::MiMalloc;
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
