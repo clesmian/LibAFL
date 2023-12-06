@@ -148,7 +148,7 @@ where
         let map_first = &executor
             .observers()
             .match_name::<O>(&self.map_observer_name)
-            .ok_or_else(|| Error::key_not_found("MapObserver not found".to_string()))?
+            .ok_or_else(|| Error::key_not_found({format!("MapObserver not found '{}'", &self.map_observer_name)}.to_string()))?
             .to_vec();
 
         let mut unstable_entries: Vec<usize> = vec![];
@@ -191,7 +191,7 @@ where
                 let map = &executor
                     .observers()
                     .match_name::<O>(&self.map_observer_name)
-                    .ok_or_else(|| Error::key_not_found("MapObserver not found".to_string()))?
+                    .ok_or_else(|| Error::key_not_found({format!("MapObserver not found '{}'", &self.map_observer_name)}.to_string()))?
                     .to_vec();
 
                 let history_map = &mut state
@@ -247,7 +247,7 @@ where
             let map = executor
                 .observers()
                 .match_name::<O>(&self.map_observer_name)
-                .ok_or_else(|| Error::key_not_found("MapObserver not found".to_string()))?;
+                .ok_or_else(|| Error::key_not_found({format!("MapObserver not found '{}'", &self.map_observer_name)}.to_string()))?;
 
             let bitmap_size = map.count_bytes();
 

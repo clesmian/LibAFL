@@ -293,7 +293,7 @@ where
     {
         let observer = observers
             .match_name::<O>(&self.map_observer_name)
-            .ok_or_else(|| Error::key_not_found("MapObserver not found".to_string()))?;
+            .ok_or_else(|| Error::key_not_found({format!("PowSched: MapObserver not found '{}'", &self.map_observer_name)}.to_string()))?;
 
         let mut hash = observer.hash() as usize;
 
