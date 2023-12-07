@@ -109,13 +109,9 @@ class StorFuzzCoverage : public ModulePass {
       i++;
     }
     if (i >= insertionBB->size()) {
-      fprintf(
-          stderr,
-          "ERROR: We have exceeded the size of the BB. The question is why?\n");
-      fprintf(stderr, "Start instr: ");
-      start->dump();
-      fprintf(stderr, "Insertion BB: ");
-      insertionBB->dump();
+      errs() << "ERROR: We have exceeded the size of the BB. The question is why?\n";
+      errs() << "Start instr: " << start;
+      errs() << "Insertion BB: " << insertionBB;
       return false;
     }
     if (insertionPoint == End) {
@@ -224,7 +220,7 @@ PreservedAnalyses StorFuzzCoverage::run(Module &M, ModuleAnalysisManager &MAM) {
 bool StorFuzzCoverage::runOnModule(Module &M) {
 #endif
   if (getenv("CONFIGURE_MODE")) {
-    fprintf(stderr, "WARNING: CONFIGURE_MODE, not doing anything\n");
+    errs() << "WARNING: CONFIGURE_MODE, not doing anything\n";
 #ifdef USE_NEW_PM
     return PreservedAnalyses::all();
 #else
@@ -333,11 +329,10 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
     // End of weaken functions
 
     if (Debug)
-      fprintf(stderr, "FUNCTION: %s (%zu)\n", F.getName().str().c_str(),
-              F.size());
+      errs() << "FUNCTION: " << F.getName() << " size=" << F.size() << "\n";
     if (isIgnoreFunction(&F)) {
       if (Debug)
-        fprintf(stderr, "Ignoring function %s\n", F.getName().str().c_str());
+        errs() << "Ignoring function " << F.getName() << "\n";
       continue;
     }
 
@@ -370,11 +365,9 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
             if (storedType) {
               // Insert before the instruction following the value definition
               if (getenv("STORFUZZ_VERBOSE")) {
-                BB.dump();
-                fprintf(stderr, "Stored value: ");
-                storedValue->dump();
-                fprintf(stderr, "Store instruction: ");
-                storeInst->dump();
+                errs() << "BB: " << BB << "\n";
+                errs() << "Stored value: " << storedValue << "\n";
+                errs() << "Store instruction: " << storeInst << "\n";
               }
 
               Value *CurLoc;
@@ -426,23 +419,18 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
                   !getInsertionPointInSameBB(valueDefInstruction,
                                              insertionPoint)) {
                 if(!(isa<PHINode>(storeLocation))) {
-                  fprintf(stderr,
-                          "WARNING: Could not find insertion point in BB of "
-                          "value definition function '%s' val: ",
-                          F.getName().str().c_str());
-                  storedValue->dump();
-                  if (Debug) { valueDefInstruction->getParent()->dump(); }
+                  errs() << "WARNING: Could not find insertion point in BB of "
+                            "value definition function '" << F.getName() << "'val: "
+                      << storedValue << "\n";
+                  if (Debug) { dbgs() << valueDefInstruction->getParent() << "\n"; }
                 }
 
                 if (!getInsertionPointInSameBB(storeInst, insertionPoint)) {
                   // We failed to find an insertion point both close to
                   // definition and store, what now???
-                  fprintf(stderr,
-                          "ERROR: Could not find insertion point in function "
-                          "'%s' val: ",
-                          F.getName().str().c_str());
-                  storedValue->dump();
-                  if(Debug) { storeInst->getParent()->dump(); }
+                  errs() << "ERROR: Could not find insertion point in function "
+                            "'" << F.getName() << "' val: "<< storedValue << "\n";
+                  if(Debug) { dbgs() << storeInst->getParent() << "\n"; }
                   assert(0);
                 }
               }
@@ -507,9 +495,8 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
                 dyn_cast<Instruction>(MapPtrIdx)->setMetadata(
                     M.getMDKindID("storfuzz_calc_index"), MDNode::get(C, None));
                 if (getenv("STORFUZZ_VERBOSE")) {
-                  fprintf(stderr, "MapPtrIdx: ");
-                  MapPtrIdx->dump();
-                  insertionBB->dump();
+                  errs() <<  "MapPtrIdx: " << MapPtrIdx
+                         << "\ninsertion BB: " << insertionBB << "\n";
                 }
 // Write to map (threadsafe by default)
 #if 1
@@ -555,9 +542,9 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
 
   if (Debug) {
     if (!inst_stores)
-      fprintf(stderr, "No instrumentation targets found.\n");
+      errs() <<  "No instrumentation targets found.\n";
     else
-      fprintf(stderr, "Instrumented %d targets.\n", inst_stores);
+      errs() << "Instrumented " <<  inst_stores << " targets\n";
   }
 
   if (getenv("STORFUZZ_DUMP_CONVERTED")) {
