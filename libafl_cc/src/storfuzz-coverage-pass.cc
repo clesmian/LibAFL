@@ -540,12 +540,7 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
     }
   }
 
-  if (Debug) {
-    if (!inst_stores)
-      errs() <<  "No instrumentation targets found.\n";
-    else
-      errs() << "Instrumented " <<  inst_stores << " targets\n";
-  }
+  outs() << "StorFuzz on '" << M.getName() << "': Instrumented " <<  inst_stores << " targets\n";
 
   if (getenv("STORFUZZ_DUMP_CONVERTED")) {
     raw_ostream &out = outs();
