@@ -31,8 +31,9 @@ pub fn main() {
             .cpp(is_cpp)
             // silence the compiler wrapper output, needed for some configure scripts.
             .silence(true)
-            // add arguments only if --libafl or --libafl-no-link are present
-            .need_libafl_arg(true)
+            // add arguments only if --libafl or --libafl-no-link are present,
+            // or if LIBAFL_INSTRUMENT env variable is set
+            .need_libafl_arg(env::var("LIBAFL_INSTRUMENT").is_err())
             .parse_args(&args)
             .expect("Failed to parse the command line")
             .add_pass(LLVMPasses::StorFuzzCoverage)
