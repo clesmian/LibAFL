@@ -7,7 +7,7 @@ use std::time::Duration;
 use shadow_rs::shadow;
 shadow!(build);
 
-use zafl_constants::{
+use storfuzz_constants::{
     DEFAULT_DATA_MAP_SIZE,
     CODE_MAP_SIZE
 };
