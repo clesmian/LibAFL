@@ -12,7 +12,7 @@ use std::{
     io::{self, Read, Write},
     path::PathBuf,
 };
-use std::env::{set_var, var, VarError};
+use std::env::{set_var, var};
 
 use clap::{Parser,CommandFactory};
 use libafl::{
