@@ -12,6 +12,7 @@ use std::{
     io::{self, Read, Write},
     path::PathBuf,
 };
+use std::env::{set_var, var, VarError};
 
 use clap::{Parser,CommandFactory};
 use libafl::{
@@ -50,6 +51,8 @@ use libafl_targets::{
 };
 #[cfg(unix)]
 use nix::{self, unistd::dup};
+
+use storfuzz_constants::DEFAULT_ASAN_OPTIONS;
 
 #[derive(Parser)]
 #[derive(Debug)]
@@ -126,6 +129,14 @@ pub extern "C" fn libafl_main() {
     if !in_dir.is_dir() {
         println!("In dir at {:?} is not a valid directory!", &in_dir);
         return;
+    }
+
+    match var("ASAN_OPTIONS") {
+        Ok(options) => {println!("Using predefined ASAN_OPTIONS: {}", options)}
+        Err(_) => {
+            println!("Setting ASAN_OPTIONS to: {}", DEFAULT_ASAN_OPTIONS);
+            set_var("ASAN_OPTIONS", DEFAULT_ASAN_OPTIONS);
+        }
     }
 
     let timeout = Duration::from_millis(args.timeout);
