@@ -92,7 +92,7 @@ where
     fn schedule(&self, state: &mut S, input: &I) -> MutationId;
 
     /// New default implementation for mutate.
-    /// Implementations must forward mutate() to this method
+    /// Implementations must forward `mutate()` to this method
     fn scheduled_mutate(
         &mut self,
         state: &mut S,
@@ -603,6 +603,7 @@ mod tests {
 /// `SchedulerMutator` Python bindings
 #[cfg(feature = "python")]
 #[allow(missing_docs)]
+#[allow(clippy::unnecessary_fallible_conversions)]
 pub mod pybind {
     use pyo3::prelude::*;
 
