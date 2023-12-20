@@ -226,6 +226,7 @@ fn fuzz(
         Ok(res) => res,
         Err(err) => match err {
             Error::ShuttingDown => {
+                println!("Shutting down, there could be some additional fuzzer output");
                 return Ok(());
             }
             _ => {
