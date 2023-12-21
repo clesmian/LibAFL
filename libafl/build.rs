@@ -1,7 +1,7 @@
 use std::error::Error;
 
 fn build_and_link_safe_alloc(){
-    #[cfg(feature="safe_alloc_in_process")]
+    #[cfg(feature= "safe_alloc_for_inprocess")]
     {
         println!("cargo:rerun-if-changed=c_src/safe_alloc.c");
 

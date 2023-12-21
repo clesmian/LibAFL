@@ -57,7 +57,7 @@ fork = ["libafl_bolts/derive"]
 adaptive_serialization = []
 
 ## Link in a memory allocator that is safe even in cases where the child corrupts the heap. Only useful for in-process fuzzing. This comes with a performance penalty and is not compatible to ASAN!
-safe_alloc_in_process = ["cc"]
+safe_alloc_for_inprocess = ["cc"]
 
 #! ## Additional Components
 

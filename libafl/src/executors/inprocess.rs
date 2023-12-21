@@ -865,7 +865,7 @@ pub mod unix_signal_handler {
         E::State: HasExecutions + HasSolutions + HasCorpus,
         Z: HasObjective<Objective = OF, State = E::State>,
     {
-        #[cfg(feature = "safe_alloc_in_process")]
+        #[cfg(feature = "safe_alloc_for_inprocess")]
         {
             extern "C" {
                 fn allocator_switch_to_safe_mode();
@@ -891,7 +891,7 @@ pub mod unix_signal_handler {
 
             log::error!("Child crashed!");
 
-            #[cfg(all(feature = "std", unix, not(feature = "safe_alloc_in_process")))]
+            #[cfg(all(feature = "std", unix, not(feature = "safe_alloc_for_inprocess")))]
             {
                 let mut bsod = Vec::new();
                 {
@@ -929,7 +929,7 @@ pub mod unix_signal_handler {
                     "We crashed at addr 0x{si_addr:x}, but are not in the target... Bug in the fuzzer? Exiting."
                 );
 
-                #[cfg(all(feature = "std", unix, not(feature = "safe_alloc_in_process")))]
+                #[cfg(all(feature = "std", unix, not(feature = "safe_alloc_for_inprocess")))]
                 {
                     let mut bsod = Vec::new();
                     {
