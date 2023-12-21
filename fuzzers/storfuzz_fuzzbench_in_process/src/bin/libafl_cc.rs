@@ -28,7 +28,7 @@ pub fn main() {
         cc.add_pass(LLVMPasses::AutoTokens);
 
         #[cfg(feature = "safe_alloc")]
-        for arg in args {
+        for arg in &args {
             if arg == "-fsanitize=address" || arg == "-fsanitize=memory" {
                 panic!("safe_alloc is not compatible with {arg}")
             }
