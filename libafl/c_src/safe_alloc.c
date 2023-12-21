@@ -112,7 +112,8 @@ __attribute__((always_inline)) static inline void *raw_mmap(size_t size, size_t 
 #ifdef DEBUG_CHUNKS
     char static_buffer[128];
     int length = snprintf(static_buffer, sizeof(static_buffer), "Allocated %ld bytes at %p\n", hdr->size, result);
-    write(STDOUT_FILENO, static_buffer, length);
+    int rc, c = 0; \
+    do {rc = write(STDOUT_FILENO, static_buffer, length); } while (rc == -1 && c++ <= 1); \
 #endif
 
     return result;
@@ -203,7 +204,8 @@ static bool in_log = false;
             int __log_size = snprintf(NULL, 0, "%s" name argfmt "\n", IS_SAFE_MODE() ? "[safe] " : "", ##__VA_ARGS__); \
             char *__log_buffer = alloca(__log_size + 1); \
             snprintf(__log_buffer, __log_size + 1, "%s" name argfmt "\n", IS_SAFE_MODE() ? "[safe] " : "", ##__VA_ARGS__); \
-            write(STDERR_FILENO, __log_buffer, __log_size); \
+            int rc, c = 0; \
+            do {rc = write(STDERR_FILENO, __log_buffer, __log_size); } while (rc == -1 && c++ <= 1); \
             in_log = false; \
         } \
     } while (0)
