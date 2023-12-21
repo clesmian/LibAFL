@@ -891,7 +891,7 @@ pub mod unix_signal_handler {
 
             log::error!("Child crashed!");
 
-            #[cfg(all(feature = "std", unix))]
+            #[cfg(all(feature = "std", unix, not(feature = "safe_alloc_in_process")))]
             {
                 let mut bsod = Vec::new();
                 {
@@ -929,7 +929,7 @@ pub mod unix_signal_handler {
                     "We crashed at addr 0x{si_addr:x}, but are not in the target... Bug in the fuzzer? Exiting."
                 );
 
-                #[cfg(all(feature = "std", unix))]
+                #[cfg(all(feature = "std", unix, not(feature = "safe_alloc_in_process")))]
                 {
                     let mut bsod = Vec::new();
                     {
