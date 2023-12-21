@@ -113,7 +113,7 @@ __attribute__((always_inline)) static inline void *raw_mmap(size_t size, size_t 
     char static_buffer[128];
     int length = snprintf(static_buffer, sizeof(static_buffer), "Allocated %ld bytes at %p\n", hdr->size, result);
     int rc, c = 0; \
-    do {rc = write(STDOUT_FILENO, static_buffer, length); } while (rc == -1 && c++ <= 1); \
+    do {rc = write(STDOUT_FILENO, static_buffer, length); } while (rc == -1 && c++ <= 1);
 #endif
 
     return result;
