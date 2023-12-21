@@ -865,6 +865,14 @@ pub mod unix_signal_handler {
         E::State: HasExecutions + HasSolutions + HasCorpus,
         Z: HasObjective<Objective = OF, State = E::State>,
     {
+        #[cfg(feature = "safe_alloc_in_process")]
+        {
+            extern "C" {
+                fn allocator_switch_to_safe_mode();
+            }
+            allocator_switch_to_safe_mode();
+        }
+
         #[cfg(all(target_os = "android", target_arch = "aarch64"))]
         let _context = _context.map(|p| {
             &mut *(((p as *mut _ as *mut libc::c_void as usize) + 128) as *mut libc::c_void
