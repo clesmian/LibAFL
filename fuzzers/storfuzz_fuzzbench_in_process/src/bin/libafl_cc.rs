@@ -27,6 +27,14 @@ pub fn main() {
         #[cfg(any(target_os = "linux", target_vendor = "apple"))]
         cc.add_pass(LLVMPasses::AutoTokens);
 
+        #[cfg(feature = "safe_alloc")]
+        for arg in args {
+            if arg == "-fsanitize=address" || arg == "-fsanitize=memory" {
+                panic!("safe_alloc is not compatible with {arg}")
+            }
+        }
+
+
         if let Some(code) = cc
             .cpp(is_cpp)
             // silence the compiler wrapper output, needed for some configure scripts.

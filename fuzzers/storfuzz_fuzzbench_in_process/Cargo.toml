@@ -8,6 +8,7 @@ edition = "2021"
 default = ["std"]
 std = []
 no_link_main = ["libafl_targets/libfuzzer_no_link_main"]
+safe_alloc = ["libafl/safe_alloc_in_process"]
 
 [profile.release]
 lto = true
@@ -25,10 +26,9 @@ cc = { version = "1.0", features = ["parallel"] }
 which = "4.4"
 
 [dependencies]
-libafl = { path = "../../libafl" , features = ["default", "safe_alloc_in_process"]}
+libafl = { path = "../../libafl" }
 libafl_bolts = { path = "../../libafl_bolts" }
 libafl_targets = { path = "../../libafl_targets", features = ["sancov_pcguard_hitcounts", "sancov_cmplog", "libfuzzer"] }
-# TODO Include it only when building cc
 libafl_cc = { path = "../../libafl_cc" }
 clap = { version = "4.0", features = ["derive"] }
 nix = "0.26"
