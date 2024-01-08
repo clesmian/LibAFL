@@ -79,6 +79,8 @@ struct Arguments {
     store_queue_metadata: bool,
     #[arg(value_name = "FILE", long, short='x', help = "Token file as produced by autotokens pass")]
     tokenfile: Option<PathBuf>,
+    #[arg(value_name = "SECONDS",long, short='l', default_value_t = 1, help = "Time in seconds between log entries, 0 signals no wait time")]
+    secs_between_log_msgs: u64,
     #[arg()]
     remaining: Option<Vec<String>>
 }
@@ -149,7 +151,9 @@ pub extern "C" fn libafl_main() {
             None
         };
 
-    fuzz(out_dir, crashes, &in_dir, args.tokenfile, log, stats_file, timeout, args.timeouts_are_solutions, args.disregard_data, args.disregard_edges, args.fast_disregard, args.store_queue_metadata)
+    let secs_between_log_msgs = Duration::from_secs(args.secs_between_log_msgs);
+
+    fuzz(out_dir, crashes, &in_dir, args.tokenfile, log, secs_between_log_msgs, stats_file, timeout, args.timeouts_are_solutions, args.disregard_data, args.disregard_edges, args.fast_disregard, args.store_queue_metadata)
         .expect("An error occurred while fuzzing");
 }
 
@@ -184,6 +188,7 @@ fn fuzz(
     seed_dir: &PathBuf,
     tokenfile: Option<PathBuf>,
     logfile: Option<PathBuf>,
+    secs_between_log_msgs: Duration,
     stats_file: PathBuf,
     timeout: Duration,
     timeouts_are_solutions: bool,
@@ -204,13 +209,19 @@ fn fuzz(
         None => RefCell::new(OpenOptions::new().append(true).open("/dev/null")?)
     };
 
+    // Initialize in the past to ensure immediate first log message
+    let mut last_log_event = current_time() - secs_between_log_msgs - Duration::from_secs(1);
+
     // 'While the monitor are state, they are usually used in the broker - which is likely never restarted
     let monitor = OnDiskTOMLMonitor::new(
         stats_file,
         SimpleMonitor::with_user_monitor(
             |s| {
-                writeln!(&mut stdout_cpy, "{s}").unwrap();
-                writeln!(log.borrow_mut(), "{:?} {s}", current_time()).unwrap();
+                if secs_between_log_msgs.is_zero() || last_log_event + secs_between_log_msgs < current_time() {
+                    last_log_event = current_time();
+                    writeln!(&mut stdout_cpy, "{s}").unwrap();
+                    writeln!(log.borrow_mut(), "{:?} {s}", current_time()).unwrap();
+                }
             },
             true
         )
