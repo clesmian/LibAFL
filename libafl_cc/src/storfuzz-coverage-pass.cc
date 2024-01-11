@@ -399,144 +399,136 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
 
               if(getenv("ONE_INSTRUMENTATION_PER_BB") == nullptr){
                 // Insert before the instruction following the value definition
-              Value *CurLoc;
-              uint32_t bitmask_selector;
-              auto storeLocationToID = DenseMap<Value*, ConstantInt*>(4);
-              if ((isa<PHINode>(storeLocation))) {
-                PHINode *storeLocationPhi = dyn_cast<PHINode>(storeLocation);
-                insertionPoint = storeLocationPhi->getIterator();
-                while(insertionPoint != storeLocationPhi->getParent()->end() &&
-                       isa<PHINode>(*insertionPoint)) {
-                  insertionPoint++;
-                }
-                assert(insertionPoint != storeLocationPhi->getParent()->end());
-                IRB.SetInsertPoint(storeLocationPhi->getParent(), insertionPoint);
+                Value *CurLoc;
+                uint32_t bitmask_selector;
+                auto storeLocationToID = DenseMap<Value*, ConstantInt*>(4);
+                if ((isa<PHINode>(storeLocation))) {
+                  PHINode *storeLocationPhi = dyn_cast<PHINode>(storeLocation);
+                  insertionPoint = storeLocationPhi->getIterator();
+                  while(insertionPoint != storeLocationPhi->getParent()->end() &&
+                        isa<PHINode>(*insertionPoint)) {
+                    insertionPoint++;
+                  }
+                  assert(insertionPoint != storeLocationPhi->getParent()->end());
+                  IRB.SetInsertPoint(storeLocationPhi->getParent(), insertionPoint);
 
-                PHINode *CurLocPhi = IRB.CreatePHI(Int32Ty, storeLocationPhi->getNumIncomingValues());
-                for(uint32_t i = 0; i < storeLocationPhi->getNumIncomingValues(); i++){
-                  // E.g.:
-                  // %x.sink30 = phi ptr [ @x, %sw.bb9 ], [ @x, %sw.bb7 ], [ @y, %sw.bb6 ], [ @y, %while.body ]
-                  // %74 = phi i32 [ 12312, %sw.bb9 ], [ 12312, %sw.bb7 ], [ 45645, %sw.bb6 ], [ 45645, %while.body ]
-                  ConstantInt* curLocID;
-                  auto curLocIDIter = storeLocationToID.find(storeLocationPhi->getIncomingValue(i));
-                  if (curLocIDIter == storeLocationToID.end()){
-                    curLocID = ConstantInt::get(Int32Ty, RandBelow(map_size));
-                    storeLocationToID.insert(
-                        std::pair<Value*, ConstantInt*>(storeLocationPhi->getIncomingValue(i),
-                        curLocID)
-                        );
-                  } else {
-                    curLocID = curLocIDIter->getSecond();
+                  PHINode *CurLocPhi = IRB.CreatePHI(Int32Ty, storeLocationPhi->getNumIncomingValues());
+                  for(uint32_t i = 0; i < storeLocationPhi->getNumIncomingValues(); i++){
+                    // E.g.:
+                    // %x.sink30 = phi ptr [ @x, %sw.bb9 ], [ @x, %sw.bb7 ], [ @y, %sw.bb6 ], [ @y, %while.body ]
+                    // %74 = phi i32 [ 12312, %sw.bb9 ], [ 12312, %sw.bb7 ], [ 45645, %sw.bb6 ], [ 45645, %while.body ]
+                    ConstantInt* curLocID;
+                    auto curLocIDIter = storeLocationToID.find(storeLocationPhi->getIncomingValue(i));
+                    if (curLocIDIter == storeLocationToID.end()){
+                      curLocID = ConstantInt::get(Int32Ty, RandBelow(map_size));
+                      storeLocationToID.insert(
+                          std::pair<Value*, ConstantInt*>(storeLocationPhi->getIncomingValue(i),
+                                                          curLocID)
+                      );
+                    } else {
+                      curLocID = curLocIDIter->getSecond();
+                    }
+
+                    CurLocPhi->addIncoming(
+                        curLocID,
+                        storeLocationPhi->getIncomingBlock(i)
+                    );
+                  }
+                  CurLoc = CurLocPhi;
+
+                } else {
+                  /* Make up location_id */
+                  cur_loc = RandBelow(map_size);
+                  CurLoc = ConstantInt::get(Int32Ty, cur_loc);
+                }
+
+                bitmask_selector = RandBelow(8);
+
+                if ((isa<PHINode>(storeLocation)) ||
+                    !getInsertionPointInSameBB(valueDefInstruction,
+                                               insertionPoint)) {
+                  if(!(isa<PHINode>(storeLocation))) {
+                    errs() << "WARNING: Could not find insertion point in BB of "
+                              "value definition function '" << F.getName() << "'val: "
+                           << storedValue << "\n";
+                    if (Debug) { dbgs() << valueDefInstruction->getParent() << "\n"; }
                   }
 
-                  CurLocPhi->addIncoming(
-                      curLocID,
-                      storeLocationPhi->getIncomingBlock(i)
-                      );
+                  if (!getInsertionPointInSameBB(storeInst, insertionPoint)) {
+                    // We failed to find an insertion point both close to
+                    // definition and store, what now???
+                    errs() << "ERROR: Could not find insertion point in function "
+                              "'" << F.getName() << "' val: "<< storedValue << "\n";
+                    if(Debug) { dbgs() << storeInst->getParent() << "\n"; }
+                    assert(0);
+                  }
                 }
-                CurLoc = CurLocPhi;
+                BasicBlock *insertionBB = (*insertionPoint).getParent();
+                IRB.SetInsertPoint(insertionBB, insertionPoint);
 
-              } else {
-                /* Make up location_id */
-                cur_loc = RandBelow(map_size);
-                CurLoc = ConstantInt::get(Int32Ty, cur_loc);
-              }
+                // TODO: Check for pointer (is this necessary?)
+                Value *StoredValue64Bit =
+                    IRB.CreateZExtOrTrunc(storedValue, IRB.getInt64Ty());
 
-              bitmask_selector = RandBelow(8);
+                if (getenv("STORFUZZ_INSTR_STYLE_FUNC")) {
+                  Value       *args[] = {CurLoc, Mask[bitmask_selector],
+                                         StoredValue64Bit};
+                  Instruction *call = IRB.CreateCall(coverageFunc, args);
+                  call->setMetadata(M.getMDKindID("nosanitize"),
+                                    MDNode::get(C, None));
+                } else {
+                  Value *cmp = IRB.CreateCmp(CmpInst::ICMP_SLT, StoredValue64Bit,
+                                             ConstantInt::get(Int64Ty, 0x400000));
+                  Value *mask = IRB.CreateSelect(cmp, Mask[bitmask_selector],
+                                                 ConstantInt::get(Int8Ty, 0));
 
-              if ((isa<PHINode>(storeLocation)) ||
-                  !getInsertionPointInSameBB(valueDefInstruction,
-                                             insertionPoint)) {
-                if(!(isa<PHINode>(storeLocation))) {
-                  errs() << "WARNING: Could not find insertion point in BB of "
-                            "value definition function '" << F.getName() << "'val: "
-                      << storedValue << "\n";
-                  if (Debug) { dbgs() << valueDefInstruction->getParent() << "\n"; }
-                }
+                  Value *Lower16Bit =
+                      IRB.CreateZExtOrTrunc(storedValue, IRB.getInt16Ty());
+                  dyn_cast<Instruction>(Lower16Bit)
+                      ->setMetadata(M.getMDKindID("storfuzz_get_val"),
+                                    MDNode::get(C, None));
+                  Value *Upper8Bit = IRB.CreateZExtOrTrunc(
+                      IRB.CreateLShr(Lower16Bit, 8), IRB.getInt8Ty());
+                  Value *Lower8Bit =
+                      IRB.CreateZExtOrTrunc(Lower16Bit, IRB.getInt8Ty());
 
-                if (!getInsertionPointInSameBB(storeInst, insertionPoint)) {
-                  // We failed to find an insertion point both close to
-                  // definition and store, what now???
-                  errs() << "ERROR: Could not find insertion point in function "
-                            "'" << F.getName() << "' val: "<< storedValue << "\n";
-                  if(Debug) { dbgs() << storeInst->getParent() << "\n"; }
-                  assert(0);
-                }
-              }
-              BasicBlock *insertionBB = (*insertionPoint).getParent();
-              IRB.SetInsertPoint(insertionBB, insertionPoint);
+                  Value *ReducedValue;
+                  ReducedValue = IRB.CreateXor(Upper8Bit, Lower8Bit);
 
-              // TODO: Check for pointer (is this necessary?)
-              Value *StoredValue64Bit =
-                  IRB.CreateZExtOrTrunc(storedValue, IRB.getInt64Ty());
-
-              if (getenv("STORFUZZ_INSTR_STYLE_FUNC")) {
-                Value       *args[] = {CurLoc, Mask[bitmask_selector],
-                                       StoredValue64Bit};
-                Instruction *call = IRB.CreateCall(coverageFunc, args);
-                call->setMetadata(M.getMDKindID("nosanitize"),
-                                  MDNode::get(C, None));
-              } else {
-                Value* cmp =
-                    IRB.CreateCmp(
-                        CmpInst::ICMP_SLT,
-                        StoredValue64Bit,
-                        ConstantInt::get(Int64Ty, 0x400000)
-                        );
-                Value* mask =
-                    IRB.CreateSelect(
-                        cmp,
-                        Mask[bitmask_selector],
-                        ConstantInt::get(Int8Ty, 0)
-                        );
-
-                Value *Lower16Bit =
-                    IRB.CreateZExtOrTrunc(storedValue, IRB.getInt16Ty());
-                dyn_cast<Instruction>(Lower16Bit)
-                    ->setMetadata(M.getMDKindID("storfuzz_get_val"),
-                                  MDNode::get(C, None));
-                Value *Upper8Bit = IRB.CreateZExtOrTrunc(
-                    IRB.CreateLShr(Lower16Bit, 8), IRB.getInt8Ty());
-                Value *Lower8Bit =
-                    IRB.CreateZExtOrTrunc(Lower16Bit, IRB.getInt8Ty());
-
-                Value *ReducedValue;
-                ReducedValue = IRB.CreateXor(Upper8Bit, Lower8Bit);
-
-                // Get Map location
-                LoadInst *MapPtrLoad = IRB.CreateLoad(
+                  // Get Map location
+                  LoadInst *MapPtrLoad = IRB.CreateLoad(
 #if LLVM_VERSION_MAJOR >= 14
-                    PointerType::get(Int8Ty, 0),
+                      PointerType::get(Int8Ty, 0),
 #endif
-                    StorFuzzMapPtr);
-                MapPtrLoad->setMetadata(M.getMDKindID("nosanitize"),
-                                        MDNode::get(C, None));
+                      StorFuzzMapPtr);
+                  MapPtrLoad->setMetadata(M.getMDKindID("nosanitize"),
+                                          MDNode::get(C, None));
 
-                // Calculate Index in map
-                Value *MapPtrIdx;
-                MapPtrIdx = IRB.CreateGEP(
+                  // Calculate Index in map
+                  Value *MapPtrIdx;
+                  MapPtrIdx = IRB.CreateGEP(
 #if LLVM_VERSION_MAJOR >= 14
-                    Int8Ty,
+                      Int8Ty,
 #endif
-                    MapPtrLoad,
-                    IRB.CreateXor(CurLoc, IRB.CreateZExtOrTrunc(
-                                              ReducedValue, IRB.getInt32Ty())));
-                dyn_cast<Instruction>(MapPtrIdx)->setMetadata(
-                    M.getMDKindID("storfuzz_calc_index"), MDNode::get(C, None));
-                if (getenv("STORFUZZ_VERBOSE")) {
-                  errs() <<  "MapPtrIdx: " << MapPtrIdx
-                         << "\ninsertion BB: " << insertionBB << "\n";
-                }
+                      MapPtrLoad,
+                      IRB.CreateXor(CurLoc, IRB.CreateZExtOrTrunc(
+                          ReducedValue, IRB.getInt32Ty())));
+                  dyn_cast<Instruction>(MapPtrIdx)->setMetadata(
+                      M.getMDKindID("storfuzz_calc_index"), MDNode::get(C, None));
+                  if (getenv("STORFUZZ_VERBOSE")) {
+                    errs() << "MapPtrIdx: " << MapPtrIdx
+                           << "\ninsertion BB: " << insertionBB << "\n";
+                  }
 // Write to map (threadsafe by default)
 #if 1
-                IRB.CreateAtomicRMW(llvm::AtomicRMWInst::BinOp::Or, MapPtrIdx,
-                                    mask,
-  #if LLVM_VERSION_MAJOR >= 13
-                                    llvm::MaybeAlign(1),
-  #endif
-                                    llvm::AtomicOrdering::Monotonic);
-#else  // Not threadsafe (not clear whether this also crashes)
-                LoadInst *BitMapEntry = IRB.CreateLoad(
+                  IRB.CreateAtomicRMW(llvm::AtomicRMWInst::BinOp::Or, MapPtrIdx,
+                                      mask,
+#if LLVM_VERSION_MAJOR >= 13
+                                      llvm::MaybeAlign(1),
+#endif
+                                      llvm::AtomicOrdering::Monotonic);
+#else  // Not threadsafe
+                  LoadInst *BitMapEntry = IRB.CreateLoad(
   #if LLVM_VERSION_MAJOR >= 14
                     IRB.getInt8Ty(),
   #endif
@@ -544,8 +536,7 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
                 BitMapEntry->setMetadata(M.getMDKindID("nosanitize"),
                                          MDNode::get(C, None));
 
-                Value *UpdatedEntry =
-                    IRB.CreateOr(BitMapEntry, mask);
+                Value *UpdatedEntry = IRB.CreateOr(BitMapEntry, mask);
 
                 IRB.CreateStore(UpdatedEntry, MapPtrIdx)
                     ->setMetadata(M.getMDKindID("nosanitize"),
