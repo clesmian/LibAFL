@@ -329,6 +329,15 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
   FunctionCallee coverageFunc =
       M.getOrInsertFunction("__storfuzz_record_value", coverageFuncType);
 
+  Type          *aggregate_argTypes[] = {Int8Ty, Int64Ty};
+  FunctionType  *aggregate_FuncType = FunctionType::get(VoidTy, aggregate_argTypes, false);
+  FunctionCallee aggregate_func =
+      M.getOrInsertFunction("__storfuzz_aggregate_value", aggregate_FuncType);
+
+  Type          *store_aggregated_argTypes[] = {Int16Ty, Int8Ty};
+  FunctionType  *store_aggregated_FuncType = FunctionType::get(VoidTy, store_aggregated_argTypes, false);
+  FunctionCallee store_aggregated_Func =
+      M.getOrInsertFunction("__storfuzz_store_aggregated_value", store_aggregated_FuncType);
 
   for (auto &F : M) {
 
@@ -353,6 +362,13 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
     for (auto &BB : F) {
       BasicBlock::iterator insertionPoint = BB.getFirstInsertionPt();
       IRBuilder<>          IRB(&(*insertionPoint));
+
+      // 10 as an arbitrary value, should be sufficient for most basic blocks, if it's not, we have a problem anyways
+      SmallPtrSet<Value*, 10> valuesToInstrument;
+
+      Instruction* lastValueDefInstruction = nullptr;
+      Instruction* lastStoreInstruction = nullptr;
+
       for (auto &instr : BB) {
         StoreInst *storeInst;
         if ((storeInst = dyn_cast<StoreInst>(&instr))) {
@@ -375,13 +391,14 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
             IntegerType *storedType =
                 dyn_cast<IntegerType>(storedValue->getType());
             if (storedType) {
-              // Insert before the instruction following the value definition
               if (getenv("STORFUZZ_VERBOSE")) {
                 errs() << "BB: " << BB << "\n";
                 errs() << "Stored value: " << storedValue << "\n";
                 errs() << "Store instruction: " << storeInst << "\n";
               }
 
+              if(getenv("ONE_INSTRUMENTATION_PER_BB") == nullptr){
+                // Insert before the instruction following the value definition
               Value *CurLoc;
               uint32_t bitmask_selector;
               auto storeLocationToID = DenseMap<Value*, ConstantInt*>(4);
@@ -534,23 +551,86 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
                     ->setMetadata(M.getMDKindID("nosanitize"),
                                   MDNode::get(C, None));
 
-#endif
-              }
+#endif          // Not threadsafe
+                } // If not instrument using functions (STORFUZZ_INSTR_STYLE_FUNC)
+              } else {  // ONE_INSTRUMENTATION_PER_BB
+                valuesToInstrument.insert(storedValue);
+                lastValueDefInstruction = valueDefInstruction;
+                lastStoreInstruction = storeInst;
+              } // ONE_INSTRUMENTATION_PER_BB
               inst_stores++;
+            } // If stored value is an integer
+          } // If storeLocation is no alloc
+        } // if instr is store
+      } // Iter instructions in BB
+
+      if(getenv("ONE_INSTRUMENTATION_PER_BB")) {
+        if (!valuesToInstrument.empty()) {
+          uint16_t loc_id = 0;
+
+          assert(lastStoreInstruction != nullptr);
+          assert(lastValueDefInstruction != nullptr);
+          if ((isa<PHINode>(lastValueDefInstruction)) ||
+              !getInsertionPointInSameBB(lastValueDefInstruction,
+                                         insertionPoint)) {
+            if (!(isa<PHINode>(lastStoreInstruction))) {
+              errs() << "WARNING: Could not find insertion point in BB after last value def "
+                     << F.getName() << " : " << BB.getName() << "\n";
+              if (Debug) {
+                dbgs() << lastValueDefInstruction->getParent() << "\n";
+              }
+            }
+
+            if (!getInsertionPointInSameBB(lastStoreInstruction,
+                                           insertionPoint)) {
+              // We failed to find an insertion point both close to
+              // definition and store, what now???
+              errs() << "ERROR: Could not find insertion point in BB after last store "
+                     << F.getName() << " : " << BB.getName() << "\n";
+              if (Debug) {
+                dbgs() << lastStoreInstruction->getParent() << "\n";
+              }
+              assert(0);
             }
           }
-        }
-      }
-      //      for (auto &I : BB) {
-      //        if (!I.isTerminator()){
-      //          Value *V = &I;
-      ////          I.dump();
-      ////          V->getType()->isEmptyTy();
-      //
-      //        }
-      //      }
-    }
-  }
+          BasicBlock *insertionBB = (*insertionPoint).getParent();
+          IRB.SetInsertPoint(insertionBB, insertionPoint);
+
+          Value   *BB_id;
+          uint32_t bb_id = RandBelow(map_size);
+          BB_id = ConstantInt::get(Int16Ty, (uint16_t)bb_id);
+          uint32_t bitmask_selector = RandBelow(8);
+
+          for (auto value : valuesToInstrument) {
+            Value *LocID = ConstantInt::get(Int8Ty, (uint8_t)loc_id);
+            Value *storedValue64Bit =
+                IRB.CreateZExtOrTrunc(value, IRB.getInt64Ty());
+
+            // TODO: What if store location of value is determined by a phi node?
+            Value       *args[] = {LocID, storedValue64Bit};
+            Instruction *call_to_aggregate =
+                IRB.CreateCall(aggregate_func, args);
+            call_to_aggregate->setMetadata(M.getMDKindID("nosanitize"),
+                                           MDNode::get(C, None));
+
+            if (loc_id >= 256) {
+              errs() << "WARNING: More than 256 instrumented stores in a BB, no we have collisions in the loc_id! "
+                     << M.getName() << ": " << F.getName() << ": "
+                     << BB.getName() << "\n";
+            }
+            loc_id++;
+          }  // for value in values to instrument
+
+          Value       *args[] = {BB_id, Mask[bitmask_selector]};
+          Instruction *call_to_store_aggregated =
+              IRB.CreateCall(store_aggregated_Func, args);
+          call_to_store_aggregated->setMetadata(M.getMDKindID("nosanitize"),
+                                                MDNode::get(C, None));
+
+        }  // if values_to_instrument is not empty
+      } // ONE_INSTRUMENTATION_PER_BB
+    } // Iter BBs in Func
+  } // Iter Funcs in Module
 
   outs() << "StorFuzz on '" << M.getName() << "': Instrumented " <<  inst_stores << " targets\n";
 
