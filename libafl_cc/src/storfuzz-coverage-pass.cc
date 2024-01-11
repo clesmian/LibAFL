@@ -51,6 +51,32 @@ using namespace llvm;
 // To enable: Add `-mllvm --debug_storfuzz_coverage` to cmd-line
 static cl::opt<bool> Debug("debug_storfuzz_coverage", cl::desc("Debug prints"),
                            cl::init(false), cl::NotHidden);
+std::mutex(logMutex);
+bool logToFile = true;
+std::ofstream *logFile = nullptr;
+
+static void log(std::string prefix,std::string msg){
+  if(logToFile){
+    logToFile = getenv("STORFUZZ_LOG_TO_FILE") != nullptr;
+    if(__glibc_unlikely(!logToFile)){
+      return;
+    }
+
+    auto complete_msg = prefix.append(" | ").append(msg);
+
+    {
+      std::unique_lock<std::mutex> lock(logMutex);
+      if (__glibc_unlikely(logFile == nullptr)) {
+        char       *file_base = getenv("STORFUZZ_LOG_TO_FILE");
+        std::string logFileName =
+            file_base + std::string("_") + std::to_string(getpid()) + ".txt";
+        logFile = new std::ofstream(logFileName, std::ios_base::app);
+      }
+      *logFile << std::unitbuf << complete_msg << std::endl;
+    }
+
+  }
+}
 
 namespace {
 
