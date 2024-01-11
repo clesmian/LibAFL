@@ -389,11 +389,12 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
       BasicBlock::iterator insertionPoint = BB.getFirstInsertionPt();
       IRBuilder<>          IRB(&(*insertionPoint));
 
-      // 10 as an arbitrary value, should be sufficient for most basic blocks, if it's not, we have a problem anyways
-      SmallPtrSet<Value*, 10> valuesToInstrument;
+      uint16_t BB_store_count = 0;
 
-      Instruction* lastValueDefInstruction = nullptr;
-      Instruction* lastStoreInstruction = nullptr;
+      // Needed only for ONE_INSTRUMENTATION_PER_BB
+      Value   *BB_id;
+      BB_id = ConstantInt::get(Int16Ty, (uint16_t) RandBelow(map_size));
+      uint32_t BB_bitmask_selector = RandBelow(8);
 
       for (auto &instr : BB) {
         StoreInst *storeInst;
@@ -423,42 +424,48 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
                 errs() << "Store instruction: " << storeInst << "\n";
               }
 
-              if(getenv("ONE_INSTRUMENTATION_PER_BB") == nullptr){
-                // Insert before the instruction following the value definition
-                Value *CurLoc;
-                uint32_t bitmask_selector;
-                auto storeLocationToID = DenseMap<Value*, ConstantInt*>(4);
+              // Relevant if NOT ONE_INSTRUMENTATION_PER_BB
+              Value   *CurLoc;
+              uint32_t bitmask_selector;
+              
+              if(getenv("ONE_INSTRUMENTATION_PER_BB") == nullptr) {
+                // Handle phi node as store_location 
+                // TODO: Should we also do this for ONE_INSTRUMENTATION_PER_BB?!
+                
+                auto storeLocationToID = DenseMap<Value *, ConstantInt *>(4);
                 if ((isa<PHINode>(storeLocation))) {
                   PHINode *storeLocationPhi = dyn_cast<PHINode>(storeLocation);
                   insertionPoint = storeLocationPhi->getIterator();
-                  while(insertionPoint != storeLocationPhi->getParent()->end() &&
-                        isa<PHINode>(*insertionPoint)) {
+                  while (insertionPoint !=
+                             storeLocationPhi->getParent()->end() &&
+                         isa<PHINode>(*insertionPoint)) {
                     insertionPoint++;
                   }
-                  assert(insertionPoint != storeLocationPhi->getParent()->end());
-                  IRB.SetInsertPoint(storeLocationPhi->getParent(), insertionPoint);
+                  assert(insertionPoint !=
+                         storeLocationPhi->getParent()->end());
+                  IRB.SetInsertPoint(storeLocationPhi->getParent(),
+                                     insertionPoint);
 
-                  PHINode *CurLocPhi = IRB.CreatePHI(Int32Ty, storeLocationPhi->getNumIncomingValues());
-                  for(uint32_t i = 0; i < storeLocationPhi->getNumIncomingValues(); i++){
+                  PHINode *CurLocPhi = IRB.CreatePHI(
+                      Int32Ty, storeLocationPhi->getNumIncomingValues());
+                  for (uint32_t i = 0;
+                       i < storeLocationPhi->getNumIncomingValues(); i++) {
                     // E.g.:
-                    // %x.sink30 = phi ptr [ @x, %sw.bb9 ], [ @x, %sw.bb7 ], [ @y, %sw.bb6 ], [ @y, %while.body ]
-                    // %74 = phi i32 [ 12312, %sw.bb9 ], [ 12312, %sw.bb7 ], [ 45645, %sw.bb6 ], [ 45645, %while.body ]
-                    ConstantInt* curLocID;
-                    auto curLocIDIter = storeLocationToID.find(storeLocationPhi->getIncomingValue(i));
-                    if (curLocIDIter == storeLocationToID.end()){
+                    // %x.sink30 = phi ptr [ @x, %sw.bb9 ], [ @x, %sw.bb7 ], [ @y, %sw.bb6 ], [ @y, %while.body ] %74 = phi i32 [ 12312, %sw.bb9 ], [ 12312, %sw.bb7 ], [ 45645, %sw.bb6 ], [ 45645, %while.body ]
+                    ConstantInt *curLocID;
+                    auto         curLocIDIter = storeLocationToID.find(
+                        storeLocationPhi->getIncomingValue(i));
+                    if (curLocIDIter == storeLocationToID.end()) {
                       curLocID = ConstantInt::get(Int32Ty, RandBelow(map_size));
                       storeLocationToID.insert(
-                          std::pair<Value*, ConstantInt*>(storeLocationPhi->getIncomingValue(i),
-                                                          curLocID)
-                      );
+                          std::pair<Value *, ConstantInt *>(
+                              storeLocationPhi->getIncomingValue(i), curLocID));
                     } else {
                       curLocID = curLocIDIter->getSecond();
                     }
 
                     CurLocPhi->addIncoming(
-                        curLocID,
-                        storeLocationPhi->getIncomingBlock(i)
-                    );
+                        curLocID, storeLocationPhi->getIncomingBlock(i));
                   }
                   CurLoc = CurLocPhi;
 
@@ -469,33 +476,37 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
                 }
 
                 bitmask_selector = RandBelow(8);
-
-                if ((isa<PHINode>(storeLocation)) ||
-                    !getInsertionPointInSameBB(valueDefInstruction,
-                                               insertionPoint)) {
-                  if(!(isa<PHINode>(storeLocation))) {
-                    errs() << "WARNING: Could not find insertion point in BB of "
-                              "value definition function '" << F.getName() << "'val: "
-                           << storedValue << "\n";
-                    if (Debug) { dbgs() << valueDefInstruction->getParent() << "\n"; }
-                  }
-
-                  if (!getInsertionPointInSameBB(storeInst, insertionPoint)) {
-                    // We failed to find an insertion point both close to
-                    // definition and store, what now???
-                    errs() << "ERROR: Could not find insertion point in function "
-                              "'" << F.getName() << "' val: "<< storedValue << "\n";
-                    if(Debug) { dbgs() << storeInst->getParent() << "\n"; }
-                    assert(0);
-                  }
+              } // if not ONE_INSTRUMENTATION_PER_BB
+              
+              // Get a valid insert point (ideally directly after the value definition
+              if ((isa<PHINode>(storeLocation)) ||
+                  !getInsertionPointInSameBB(valueDefInstruction,
+                                             insertionPoint)) {
+                if(!(isa<PHINode>(storeLocation))) {
+                  errs() << "WARNING: Could not find insertion point in BB of "
+                            "value definition function '" << F.getName() << "'val: "
+                         << storedValue << "\n";
+                  if (Debug) { dbgs() << valueDefInstruction->getParent() << "\n"; }
                 }
-                BasicBlock *insertionBB = (*insertionPoint).getParent();
-                IRB.SetInsertPoint(insertionBB, insertionPoint);
 
-                // TODO: Check for pointer (is this necessary?)
-                Value *StoredValue64Bit =
-                    IRB.CreateZExtOrTrunc(storedValue, IRB.getInt64Ty());
+                if (!getInsertionPointInSameBB(storeInst, insertionPoint)) {
+                  // We failed to find an insertion point both close to
+                  // definition and store, what now???
+                  errs() << "ERROR: Could not find insertion point in function "
+                            "'" << F.getName() << "' val: "<< storedValue << "\n";
+                  if(Debug) { dbgs() << storeInst->getParent() << "\n"; }
+                  assert(0);
+                }
+              }
+              BasicBlock *insertionBB = (*insertionPoint).getParent();
+              IRB.SetInsertPoint(insertionBB, insertionPoint);
 
+              // TODO: Check for pointer (is this necessary?)
+              Value *StoredValue64Bit =
+                  IRB.CreateZExtOrTrunc(storedValue, IRB.getInt64Ty());
+
+              
+              if(getenv("ONE_INSTRUMENTATION_PER_BB") == nullptr){
                 if (getenv("STORFUZZ_INSTR_STYLE_FUNC")) {
                   Value       *args[] = {CurLoc, Mask[bitmask_selector],
                                          StoredValue64Bit};
@@ -503,6 +514,7 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
                   call->setMetadata(M.getMDKindID("nosanitize"),
                                     MDNode::get(C, None));
                 } else {
+                  // Inline instrumentation at every store without function calls
                   Value *cmp = IRB.CreateCmp(CmpInst::ICMP_SLT, StoredValue64Bit,
                                              ConstantInt::get(Int64Ty, 0x400000));
                   Value *mask = IRB.CreateSelect(cmp, Mask[bitmask_selector],
@@ -569,83 +581,47 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
                                   MDNode::get(C, None));
 
 #endif          // Not threadsafe
-                } // If not instrument using functions (STORFUZZ_INSTR_STYLE_FUNC)
+                } // Inline instrumentation without functions
               } else {  // ONE_INSTRUMENTATION_PER_BB
-                valuesToInstrument.insert(storedValue);
-                lastValueDefInstruction = valueDefInstruction;
-                lastStoreInstruction = storeInst;
+                // Add each stored value to aggregated value
+                
+                // Give each store in BB a unique ID to avoid that same values stored cancel each other out
+                Value *StoreID = ConstantInt::get(Int8Ty, (uint8_t)BB_store_count);
+
+                Value       *args[] = {StoreID, StoredValue64Bit};
+                Instruction *call_to_aggregate =
+                    IRB.CreateCall(aggregate_func, args);
+                call_to_aggregate->setMetadata(M.getMDKindID("nosanitize"),
+                                               MDNode::get(C, None));
+
+                if (BB_store_count >= 256) {
+                  errs() << "WARNING: More than 256 instrumented stores in a BB, no we have collisions in the loc_id! "
+                         << M.getName() << ": " << F.getName() << ": "
+                         << BB.getName() << "\n";
+                }
+                
               } // ONE_INSTRUMENTATION_PER_BB
-              inst_stores++;
+              BB_store_count++;
             } // If stored value is an integer
           } // If storeLocation is no alloc
         } // if instr is store
       } // Iter instructions in BB
 
       if(getenv("ONE_INSTRUMENTATION_PER_BB")) {
-        if (!valuesToInstrument.empty()) {
-          uint16_t loc_id = 0;
-
-          assert(lastStoreInstruction != nullptr);
-          assert(lastValueDefInstruction != nullptr);
-          if ((isa<PHINode>(lastValueDefInstruction)) ||
-              !getInsertionPointInSameBB(lastValueDefInstruction,
-                                         insertionPoint)) {
-            if (!(isa<PHINode>(lastStoreInstruction))) {
-              errs() << "WARNING: Could not find insertion point in BB after last value def "
-                     << F.getName() << " : " << BB.getName() << "\n";
-              if (Debug) {
-                dbgs() << lastValueDefInstruction->getParent() << "\n";
-              }
-            }
-
-            if (!getInsertionPointInSameBB(lastStoreInstruction,
-                                           insertionPoint)) {
-              // We failed to find an insertion point both close to
-              // definition and store, what now???
-              errs() << "ERROR: Could not find insertion point in BB after last store "
-                     << F.getName() << " : " << BB.getName() << "\n";
-              if (Debug) {
-                dbgs() << lastStoreInstruction->getParent() << "\n";
-              }
-              assert(0);
-            }
-          }
-          BasicBlock *insertionBB = (*insertionPoint).getParent();
-          IRB.SetInsertPoint(insertionBB, insertionPoint);
-
-          Value   *BB_id;
-          uint32_t bb_id = RandBelow(map_size);
-          BB_id = ConstantInt::get(Int16Ty, (uint16_t)bb_id);
-          uint32_t bitmask_selector = RandBelow(8);
-
-          for (auto value : valuesToInstrument) {
-            Value *LocID = ConstantInt::get(Int8Ty, (uint8_t)loc_id);
-            Value *storedValue64Bit =
-                IRB.CreateZExtOrTrunc(value, IRB.getInt64Ty());
-
-            // TODO: What if store location of value is determined by a phi node?
-            Value       *args[] = {LocID, storedValue64Bit};
-            Instruction *call_to_aggregate =
-                IRB.CreateCall(aggregate_func, args);
-            call_to_aggregate->setMetadata(M.getMDKindID("nosanitize"),
-                                           MDNode::get(C, None));
-
-            if (loc_id >= 256) {
-              errs() << "WARNING: More than 256 instrumented stores in a BB, no we have collisions in the loc_id! "
-                     << M.getName() << ": " << F.getName() << ": "
-                     << BB.getName() << "\n";
-            }
-            loc_id++;
-          }  // for value in values to instrument
-
-          Value       *args[] = {BB_id, Mask[bitmask_selector]};
+        // Store aggregated value to map
+        if (BB_store_count > 0) {
+          Value       *args[] = {BB_id, Mask[BB_bitmask_selector]};
           Instruction *call_to_store_aggregated =
               IRB.CreateCall(store_aggregated_Func, args);
           call_to_store_aggregated->setMetadata(M.getMDKindID("nosanitize"),
                                                 MDNode::get(C, None));
-
-        }  // if values_to_instrument is not empty
+        }  // if at least one store was done in BB
       } // ONE_INSTRUMENTATION_PER_BB
+
+      std::string msg = M.getName().str() + ":" + F.getName().str() + ":" + BB.getName().str() + "| " + std::to_string(BB_store_count);
+      log("STORES_PER_BB", msg);
+
+      inst_stores += BB_store_count;
     } // Iter BBs in Func
   } // Iter Funcs in Module
 
