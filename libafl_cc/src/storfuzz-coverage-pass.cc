@@ -367,6 +367,8 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
 
   for (auto &F : M) {
 
+
+    maybeWeakenFunction(M, F);
     if (Debug)
       errs() << "FUNCTION: " << F.getName() << " size=" << F.size() << "\n";
     if (isIgnoreFunction(&F)) {
@@ -381,7 +383,6 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
       continue;
     }
 
-    maybeWeakenFunction(M, F);
 
     if (F.size() < function_minimum_size) { continue; }
 
