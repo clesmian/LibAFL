@@ -342,6 +342,11 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
       continue;
     }
 
+    // Bail out quickly
+    if (F.onlyReadsMemory()){
+      errs() << "FUNCTION: " << F.getName() << " does not write to memory\n";
+      continue;
+    }
 
     maybeWeakenFunction(M, F);
 
