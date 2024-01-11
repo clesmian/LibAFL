@@ -329,8 +329,6 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
   FunctionCallee coverageFunc =
       M.getOrInsertFunction("__storfuzz_record_value", coverageFuncType);
 
-  StringSet WeakenFunctions;
-  WeakenFunctions.insert("main");
 
   for (auto &F : M) {
 
