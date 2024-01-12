@@ -631,7 +631,13 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
         }  // if at least one store was done in BB
       } // ONE_INSTRUMENTATION_PER_BB
 
-      std::string msg = M.getName().str() + ":" + F.getName().str() + ":" + BB.getName().str() + "| " + std::to_string(BB_store_count);
+      auto I = BB.getFirstNonPHIOrDbg(true);
+      auto line_num = I->getDebugLoc() ? std::to_string(I->getDebugLoc().getLine()) : "?";
+
+      std::string msg = M.getName().str() + ":" + F.getName().str() + ":" + BB.getName().str()
+                        + " line: " + line_num
+                        + " | " + std::to_string(BB_store_count);
+
       log("STORES_PER_BB", msg);
 
       inst_stores += BB_store_count;
