@@ -425,59 +425,71 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
                 errs() << "Store instruction: " << storeInst << "\n";
               }
 
-              // Relevant if NOT ONE_INSTRUMENTATION_PER_BB
               Value   *CurLoc;
               uint32_t bitmask_selector;
-              
-              if(getenv("ONE_INSTRUMENTATION_PER_BB") == nullptr) {
-                // Handle phi node as store_location 
-                // TODO: Should we also do this for ONE_INSTRUMENTATION_PER_BB?!
-                
-                auto storeLocationToID = DenseMap<Value *, ConstantInt *>(4);
-                if ((isa<PHINode>(storeLocation))) {
-                  PHINode *storeLocationPhi = dyn_cast<PHINode>(storeLocation);
-                  insertionPoint = storeLocationPhi->getIterator();
-                  while (insertionPoint !=
-                             storeLocationPhi->getParent()->end() &&
-                         isa<PHINode>(*insertionPoint)) {
-                    insertionPoint++;
-                  }
-                  assert(insertionPoint !=
-                         storeLocationPhi->getParent()->end());
-                  IRB.SetInsertPoint(storeLocationPhi->getParent(),
-                                     insertionPoint);
 
-                  PHINode *CurLocPhi = IRB.CreatePHI(
-                      Int32Ty, storeLocationPhi->getNumIncomingValues());
-                  for (uint32_t i = 0;
-                       i < storeLocationPhi->getNumIncomingValues(); i++) {
-                    // E.g.:
-                    // %x.sink30 = phi ptr [ @x, %sw.bb9 ], [ @x, %sw.bb7 ], [ @y, %sw.bb6 ], [ @y, %while.body ] %74 = phi i32 [ 12312, %sw.bb9 ], [ 12312, %sw.bb7 ], [ 45645, %sw.bb6 ], [ 45645, %while.body ]
-                    ConstantInt *curLocID;
-                    auto         curLocIDIter = storeLocationToID.find(
-                        storeLocationPhi->getIncomingValue(i));
-                    if (curLocIDIter == storeLocationToID.end()) {
-                      curLocID = ConstantInt::get(Int32Ty, RandBelow(map_size));
-                      storeLocationToID.insert(
-                          std::pair<Value *, ConstantInt *>(
-                              storeLocationPhi->getIncomingValue(i), curLocID));
+              // Handle phi node as store_location (stores to different locations are considered seperately)
+              auto storeLocationToID = DenseMap<Value *, ConstantInt *>(4);
+              if ((isa<PHINode>(storeLocation))) {
+                PHINode *storeLocationPhi = dyn_cast<PHINode>(storeLocation);
+                insertionPoint = storeLocationPhi->getIterator();
+                while (insertionPoint !=
+                           storeLocationPhi->getParent()->end() &&
+                       isa<PHINode>(*insertionPoint)) {
+                  insertionPoint++;
+                }
+                assert(insertionPoint !=
+                       storeLocationPhi->getParent()->end());
+                IRB.SetInsertPoint(storeLocationPhi->getParent(),
+                                   insertionPoint);
+
+                PHINode *CurLocPhi = IRB.CreatePHI(
+                    // If we use ONE_INSTRUMENTATION_PER_BB, the current location id is only 8 bit
+                    getenv("ONE_INSTRUMENTATION_PER_BB") != nullptr ? Int8Ty : Int32Ty,
+                    storeLocationPhi->getNumIncomingValues());
+                for (uint32_t i = 0; i < storeLocationPhi->getNumIncomingValues(); i++) {
+                  // E.g.:
+                  // %x.sink30 = phi ptr [ @x, %sw.bb9 ], [ @x, %sw.bb7 ], [ @y, %sw.bb6 ], [ @y, %while.body ]
+                  // %74 = phi i32 [ 12312, %sw.bb9 ], [ 12312, %sw.bb7 ], [ 45645, %sw.bb6 ], [ 45645, %while.body ]
+                  ConstantInt *curLocID;
+                  auto         curLocIDIter = storeLocationToID.find(
+                      storeLocationPhi->getIncomingValue(i));
+                  if (curLocIDIter == storeLocationToID.end()) {
+                    if(getenv("ONE_INSTRUMENTATION_PER_BB") != nullptr) {
+                      // Use identifiers unique to the stores in current BB
+                      curLocID = ConstantInt::get(Int8Ty, (uint8_t) BB_store_count);
                     } else {
-                      curLocID = curLocIDIter->getSecond();
-                    }
+                      // Use globally unique identifiers
+                      curLocID = ConstantInt::get(Int32Ty, RandBelow(map_size));
+                    } // if not ONE_INSTRUMENTATION_PER_BB
 
-                    CurLocPhi->addIncoming(
-                        curLocID, storeLocationPhi->getIncomingBlock(i));
+                    BB_store_count++;
+
+                    storeLocationToID.insert(
+                        std::pair<Value *, ConstantInt *>(
+                            storeLocationPhi->getIncomingValue(i), curLocID));
+                  } else {
+                    curLocID = curLocIDIter->getSecond();
                   }
-                  CurLoc = CurLocPhi;
 
+                  CurLocPhi->addIncoming(
+                      curLocID, storeLocationPhi->getIncomingBlock(i));
+                }
+                CurLoc = CurLocPhi;
+
+              } else { // if store location is not a PHI
+                if(getenv("ONE_INSTRUMENTATION_PER_BB") != nullptr) {
+                  // Use an identifier unique to the stores in the current BB
+                  CurLoc = ConstantInt::get(Int32Ty, BB_store_count);
                 } else {
-                  /* Make up location_id */
+                  /* Make up globally unique location_id */
                   cur_loc = RandBelow(map_size);
                   CurLoc = ConstantInt::get(Int32Ty, cur_loc);
-                }
+                } // if not ONE_INSTRUMENTATION_PER_BB
+                BB_store_count++;
+              } // if store location is not a PHI
 
-                bitmask_selector = RandBelow(8);
-              } // if not ONE_INSTRUMENTATION_PER_BB
+              bitmask_selector = RandBelow(8);
               
               // Get a valid insert point (ideally directly after the value definition
               if ((isa<PHINode>(storeLocation)) ||
@@ -587,7 +599,8 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
                 // Add each stored value to aggregated value
                 
                 // Give each store in BB a unique ID to avoid that same values stored cancel each other out
-                Value *StoreID = ConstantInt::get(Int8Ty, (uint8_t)BB_store_count);
+                // The ZExtOrTrunc should always be eliminated by optimization
+                Value *StoreID = IRB.CreateZExtOrTrunc(CurLoc, Int8Ty);
 
                 Value       *args[] = {StoreID, StoredValue64Bit};
                 Instruction *call_to_aggregate =
@@ -602,7 +615,6 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
                 }
                 
               } // ONE_INSTRUMENTATION_PER_BB
-              BB_store_count++;
             } // If stored value is an integer
           } // If storeLocation is no alloc
         } // if instr is store
