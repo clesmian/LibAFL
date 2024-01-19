@@ -703,7 +703,7 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
         // Bail out if there are too many stores to instrument
         if (BB_store_count > THRESHOLD){
           dbgs() << "DEBUG: Not instrumenting '" << M.getName() << ": " << F.getName() << ": " << BB.getName() <<
-              "' because it has more than" << itostr(THRESHOLD) << " stores\n";
+              "' because it has more than " << itostr(THRESHOLD) << " stores\n";
           break;
         }
 
