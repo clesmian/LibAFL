@@ -373,6 +373,16 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
   FunctionCallee store_single_aggregated_Func =
       M.getOrInsertFunction("__storfuzz_store_single_aggregated_value", store_single_aggregated_FuncType);
 
+  // Threshold used to determine whether a bb should be instrumented
+  auto THRESHOLD = 0;
+  if(getenv("MAX_STORES_PER_BB")) {
+    THRESHOLD = atoi(getenv("MAX_STORES_PER_BB"));
+  }
+  if(THRESHOLD <= 0){
+    THRESHOLD = 9; // Default to 9
+  }
+
+
   for (auto &F : M) {
 
 
@@ -407,7 +417,6 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
       bool only_one_store = false;
 
       bool instrument_this_time = false;
-      auto THRESHOLD = 9;
       // Pass over each block twice and only instrument it when it has fewer then <THRESHOLD> stores
       do { // while (!instrument_this_time)
         // If we have found stores already we're in the second pass. The THRESHOLD has been checked in the first iteration
