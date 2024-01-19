@@ -709,7 +709,7 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
 
       } while (!instrument_this_time);
 
-      if(getenv("ONE_INSTRUMENTATION_PER_BB") && !only_one_store) {
+      if(instrument_this_time && getenv("ONE_INSTRUMENTATION_PER_BB") && !only_one_store) {
         // Store aggregated value to map
         if (BB_store_count > 0) {
           Value       *args[] = {BB_id, Mask[BB_bitmask_selector]};
@@ -718,7 +718,12 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
           call_to_store_aggregated->setMetadata(M.getMDKindID("nosanitize"),
                                                 MDNode::get(C, None));
         }  // if at least one store was done in BB
-      } // ONE_INSTRUMENTATION_PER_BB
+      } // instrument_this_time && ONE_INSTRUMENTATION_PER_BB && !only_one_store
+
+      // Don't skew statistics if we didn't instrument anything
+      if(!instrument_this_time){
+        BB_store_count = 0;
+      }
 
       auto I = BB.getFirstNonPHIOrDbg(true);
       auto line_num = I->getDebugLoc() ? std::to_string(I->getDebugLoc().getLine()) : "?";
