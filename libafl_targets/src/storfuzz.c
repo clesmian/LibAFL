@@ -14,7 +14,7 @@ inline extern void __storfuzz_record_value(uint16_t loc_id, uint8_t bitmask, uin
 
 
 // Shamelessly stolen from IJON
-uint64_t ijon_simple_hash(uint64_t x) {
+inline uint64_t ijon_simple_hash(uint64_t x) {
     x = (x ^ (x >> 30)) * UINT64_C(0xbf58476d1ce4e5b9);
     x = (x ^ (x >> 27)) * UINT64_C(0x94d049bb133111eb);
     x = x ^ (x >> 31);
@@ -38,4 +38,14 @@ inline extern void __storfuzz_aggregate_value(uint8_t loc_id, uint64_t value){
   }
   // hash in an id for the store location inside of the block
   aggregate ^= ijon_simple_hash(((uint64_t)loc_id << 56) ^ value);
+}
+
+inline extern void __storfuzz_store_single_aggregated_value(uint16_t bb_id, uint8_t bitmask, uint64_t value){
+  __storfuzz_aggregate_value(0, value);
+
+  uint16_t reduced = 0xffff & (aggregate ^ (aggregate >> 16) ^ (aggregate >> 32) ^ (aggregate >> 48));
+
+  __storfuzz_area_ptr[bb_id^reduced] |= bitmask;
+
+  aggregate = 0;
 }

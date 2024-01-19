@@ -365,6 +365,14 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
   FunctionCallee store_aggregated_Func =
       M.getOrInsertFunction("__storfuzz_store_aggregated_value", store_aggregated_FuncType);
 
+
+  // Useful for BBs with only one store
+  // __storfuzz_store_single_aggregated_value(uint16_t bb_id, uint8_t bitmask, uint64_t value){
+  Type          *store_single_aggregated_argTypes[] = {Int16Ty, Int8Ty, Int64Ty};
+  FunctionType  *store_single_aggregated_FuncType = FunctionType::get(VoidTy, store_single_aggregated_argTypes, false);
+  FunctionCallee store_single_aggregated_Func =
+      M.getOrInsertFunction("__storfuzz_store_single_aggregated_value", store_single_aggregated_FuncType);
+
   for (auto &F : M) {
 
 
