@@ -43,9 +43,5 @@ inline extern void __storfuzz_aggregate_value(uint8_t loc_id, uint64_t value){
 inline extern void __storfuzz_store_single_aggregated_value(uint16_t bb_id, uint8_t bitmask, uint64_t value){
   __storfuzz_aggregate_value(0, value);
 
-  uint16_t reduced = 0xffff & (aggregate ^ (aggregate >> 16) ^ (aggregate >> 32) ^ (aggregate >> 48));
-
-  __storfuzz_area_ptr[bb_id^reduced] |= bitmask;
-
-  aggregate = 0;
+  __storfuzz_store_aggregated_value(bb_id, bitmask);
 }
