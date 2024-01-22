@@ -687,14 +687,14 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
                             << "WARNING: More than 256 instrumented stores in a BB, now we have collisions in the loc_id! "
                             << M.getName() << ": " << F.getName() << ": "
                             << BB.getName() << "\n";
-                      } // !only_one_store
-                    }
-                  }  // ONE_INSTRUMENTATION_PER_BB
-                }    // If instrument_this_time
-              }      // If stored value is an integer
-            }        // If storeLocation is no alloc
-          }          // if instr is store
-        }            // Iter instructions in BB
+                      } // if BB_store_count >= 256
+                    }   // !only_one_store
+                  }     // ONE_INSTRUMENTATION_PER_BB
+                }       // If instrument_this_time
+              }         // If stored value is an integer
+            }           // If storeLocation is no alloc
+          }             // if instr is store
+        }               // Iter instructions in BB
 
         // Bail out if there are no stores to instrument in the current basic block
         if(BB_store_count == 0){
