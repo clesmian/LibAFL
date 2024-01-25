@@ -26,6 +26,8 @@
 #include "llvm/IR/Module.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/MathExtras.h"
+#include "llvm/Analysis/LazyValueInfo.h"
+#include "llvm/IR/ConstantRange.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Support/FormatVariadic.h"
@@ -328,6 +330,12 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
 
 #ifdef USE_NEW_PM
   auto PA = PreservedAnalyses::none();
+  // See here:
+  // https://github.com/AFLplusplus/AFLplusplus/blob/358cd1b062e58ce1d5c8efeef4789a5aca7ac5a9/instrumentation/SanitizerCoveragePCGUARD.so.cc#L236
+
+  auto &FAM = MAM.getResult<FunctionAnalysisManagerModuleProxy>(M).getManager();
+#else
+  errs() << "WARNING: without new pass manager, we do not support certain analyses!\n";
 #endif
 
   /* Setup random() so we get Actually Random(TM) */
@@ -403,6 +411,10 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
 
 
     if (F.size() < function_minimum_size) { continue; }
+#ifdef USE_NEW_PM
+    auto *LVI = &FAM.getResult<LazyValueAnalysis>(F);
+
+#endif
 
     for (auto &BB : F) {
       BasicBlock::iterator insertionPoint = BB.getFirstInsertionPt();
@@ -458,6 +470,31 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
                   errs() << "Stored value: " << storedValue << "\n";
                   errs() << "Store instruction: " << storeInst << "\n";
                 }
+#ifdef USE_NEW_PM
+                // Some logging of known value ranges
+                auto valRange = LVI->getConstantRange(storedValue, storeInst, true);
+                if(!instrument_this_time){
+                  std::string msg;
+                  raw_string_ostream msg_stream(msg);
+
+                  msg_stream << "\""
+                             << *storeLocation << "\" | \""
+                             << *storedValue << "\" | \""
+                             << valRange << "\" | \""
+                             // Some info on the value type and range
+                             << *storedType <<
+                      (LVI->getConstant(storedValue, storeInst) != nullptr ? " constant":
+                             valRange.isWrappedSet() ? " wrapped":
+                             valRange.isSignWrappedSet() ? " sign_wrapped" :
+                             valRange.isUpperWrapped() ? " upper_wrapped":
+                             valRange.isUpperSignWrapped() ? " upper_sign_wrapped" :
+                                                         "") << "\" | " <<
+                      (valRange.getUpper() - valRange.getLower());
+
+
+                  log("VAL_RANGES", msg);
+                }
+#endif
 
                 Value   *CurLoc;
                 uint32_t bitmask_selector;
