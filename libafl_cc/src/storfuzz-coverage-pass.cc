@@ -467,8 +467,8 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
               if (storedType) {
                 if (getenv("STORFUZZ_VERBOSE")) {
                   errs() << "BB: " << BB << "\n";
-                  errs() << "Stored value: " << storedValue << "\n";
-                  errs() << "Store instruction: " << storeInst << "\n";
+                  errs() << "Stored value: " << *storedValue << "\n";
+                  errs() << "Store instruction: " << *storeInst << "\n";
                 }
 #ifdef USE_NEW_PM
                 // Some logging of known value ranges
