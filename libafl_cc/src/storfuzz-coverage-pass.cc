@@ -478,18 +478,32 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
                   raw_string_ostream msg_stream(msg);
 
                   msg_stream << "\""
-                             << *storeLocation << "\" | \""
+                             << *storeLocation << " (" << storeLocation->getNameOrAsOperand() << ")\" | \""
+                  // It is a known issue that there might be newlines in this part (e.g. with invoke)
                              << *storedValue << "\" | \""
                              << valRange << "\" | \""
-                             // Some info on the value type and range
+                  // Some info on the value type and range
                              << *storedType <<
                       (LVI->getConstant(storedValue, storeInst) != nullptr ? " constant":
                              valRange.isWrappedSet() ? " wrapped":
                              valRange.isSignWrappedSet() ? " sign_wrapped" :
                              valRange.isUpperWrapped() ? " upper_wrapped":
                              valRange.isUpperSignWrapped() ? " upper_sign_wrapped" :
-                                                         "") << "\" | " <<
-                      (valRange.getUpper() - valRange.getLower());
+                                                         "") << "\" | ";
+
+                  if(valRange.isFullSet()){
+                    msg_stream << storedType->getBitMask();
+                  } else {
+                    auto size = (valRange.getUpper() - valRange.getLower())
+                        .tryZExtValue();
+                    if (size) {
+                      msg_stream << size;
+                    } else {
+                      // Unknown error
+                      errs() << "ERROR: Could not compute size for range: " << valRange << "\n";
+                      msg_stream << "?";
+                    }
+                  }
 
 
                   log("VAL_RANGES", msg);
