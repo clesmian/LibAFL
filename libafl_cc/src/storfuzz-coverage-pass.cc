@@ -506,6 +506,7 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
                   }
 
 
+                  erase_if(msg, [](char x) { return x == '\n' ;});
                   log("VAL_RANGES", msg);
                 }
 #endif
