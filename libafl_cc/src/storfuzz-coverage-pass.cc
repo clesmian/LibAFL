@@ -262,6 +262,18 @@ class StorFuzzCoverage : public ModulePass {
       }
     }
   }
+
+
+  // Value.printNameOrAsOperand is only available in debug builds
+  std::string printNameOrAsOperandInRelease(Value* value, Module* M = nullptr, bool printType = true){
+    if (!value->getName().empty())
+      return std::string(value->getName());
+
+    std::string BBName;
+    raw_string_ostream OS(BBName);
+    value->printAsOperand(OS, printType, M);
+    return OS.str();
+  }
 };
 
 }  // namespace
@@ -478,7 +490,7 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
                   raw_string_ostream msg_stream(msg);
 
                   msg_stream << "\""
-                             << *storeLocation << " (" << storeLocation->getNameOrAsOperand() << ")\" | \""
+                             << *storeLocation << " (" << printNameOrAsOperandInRelease(storeLocation, &M, true) << ")\" | \""
                   // It is a known issue that there might be newlines in this part (e.g. with invoke)
                              << *storedValue << "\" | \""
                              << valRange << "\" | \""
