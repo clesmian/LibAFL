@@ -36,8 +36,34 @@ inline extern void __storfuzz_aggregate_value(uint8_t loc_id, uint64_t value){
   if((int64_t)value >= 0x400000){
     return;
   }
+# ifdef USE_VARIANT_1
+//  uint32_t val = value;
+
+  uint64_t res = 0;
+  uint64_t even_bit = value & 0x1;
+  // Set 8th result bit to 1 if negative
+  uint64_t sign_bit = ((int64_t)value) < 0 ? 1 << 7 : 0;
+
+  res |= even_bit | sign_bit;
+
+  // Due to pointer skip, the value has at most 22 relevant bits
+
+  value &= 0x3FFFFF;
+
+  for( int i = 0; i < 3; i++) {
+    uint8_t temp = (value >> (1 + 8 * i)) & 0xFF;
+    temp = (temp >> 1) ^ temp;
+    temp = (temp >> 4) ^ temp;
+    temp = (temp & 0x5);
+    temp = ((temp >> 1) ^ temp) & 0x3;
+    res |= temp << (1 + 2 * i);
+  }
+  // hash in an id for the store location inside of the block
+  aggregate ^= ijon_simple_hash(((uint64_t)loc_id << 8) ^ res);
+# else
   // hash in an id for the store location inside of the block
   aggregate ^= ijon_simple_hash(((uint64_t)loc_id << 56) ^ value);
+#endif
 }
 
 inline extern void __storfuzz_store_single_aggregated_value(uint16_t bb_id, uint8_t bitmask, uint64_t value){

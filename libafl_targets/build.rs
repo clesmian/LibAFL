@@ -211,10 +211,14 @@ fn main() {
 
     println!("cargo:rerun-if-changed=src/storfuzz.c");
 
-    cc::Build::new()
-        .file(src_dir.join("storfuzz.c"))
-        .define("STORFUZZ_MAP_SIZE", Some(&*format!("{storfuzz_map_size}")))
-        .compile("storfuzz");
+    let mut builder = cc::Build::new();
+    builder.file(src_dir.join("storfuzz.c"));
+    builder.define("STORFUZZ_MAP_SIZE", Some(&*format!("{storfuzz_map_size}")));
+
+    #[cfg(feature = "storfuzz_lossy_aggregation")]
+    builder.define("USE_VARIANT_1", None);
+
+    builder.compile("storfuzz");
 
     #[cfg(feature = "forkserver")]
     {
