@@ -8,25 +8,17 @@ shadow!(build);
 
 use storfuzz_constants::{DEFAULT_DATA_MAP_SIZE, CODE_MAP_SIZE, DEFAULT_ASAN_OPTIONS};
 
-use libafl_bolts::{
-    AsMutSlice,
-    core_affinity::{
-        Cores,
-        CoreId,
-    },
-    current_nanos,
-    rands::StdRand,
-    shmem::{
-        ShMem,
-        ShMemProvider,
-        StdShMemProvider,
-    },
-    tuples::{
-        tuple_list,
-        Merge,
-    },
-    Named
-};
+use libafl_bolts::{AsMutSlice, core_affinity::{
+    Cores,
+    CoreId,
+}, current_nanos, rands::StdRand, shmem::{
+    ShMem,
+    ShMemProvider,
+    StdShMemProvider,
+}, tuples::{
+    tuple_list,
+    Merge,
+}, Named};
 
 use libafl_targets::coverage::autotokens;
 
@@ -107,23 +99,16 @@ use libafl::{
 compile_error!("Cannot use features data-cov-only and edge-cov-only together");
 
 #[cfg(feature="variable-data-map-size")]
-use libafl::observers::StdMapObserver;
-#[cfg(feature="variable-data-map-size")]
-use std::num::ParseIntError;
+compile_error!("Variable data map size is not supported anymore");
+
 use libafl::mutators::Tokens;
 use libafl::mutators::TokenReplace;
+use libafl::observers::MultiMapObserver;
 use libafl::schedulers::powersched::PowerSchedule;
 use libafl::stages::CalibrationStage;
 use libafl::state::HasMetadata;
-
-#[cfg(feature="variable-data-map-size")]
-fn parse_maybe_hex(s: &str) -> Result<usize, ParseIntError> {
-    if s.starts_with("0x") {
-        usize::from_str_radix(s.trim_start_matches("0x"), 16)
-    } else {
-        s.parse()
-    }
-}
+use libafl_bolts::prelude::OwnedMutSlice;
+use libafl_targets::EDGES_MAP_SIZE;
 
 #[cfg(feature = "data-cov-only")]
 const ABOUT: & str = "AFL-like fuzzer (DATA only)";
@@ -182,9 +167,6 @@ struct Arguments {
     #[cfg(not(feature = "keep-queue-in-memory"))]
     #[arg(long, short = 'Q', help = "Store queue in this directory instead of one dir per fuzzer under out")]
     queue_directory: Option<PathBuf>,
-    #[cfg(feature="variable-data-map-size")]
-    #[arg(short='D', long, value_name = "SIZE", default_value_t=0x10000, value_parser=parse_maybe_hex)]
-    data_map_size: usize,
     #[arg(long, help = "Fixed seed for RNG (each fuzzer gets its own seed derived from the supplied value)")]
     seed: Option<u64>,
     #[arg(value_name = "FILE", long, short='x', help = "Token file as produced by autotokens pass")]
@@ -239,47 +221,44 @@ fn main() {
     let tokenfile = args.tokenfile;
 
     let mut run_client = |state: Option<_>, mut mgr, core_id: CoreId| {
-        #[cfg(not(feature="variable-data-map-size"))]
-            let map_size: usize = CODE_MAP_SIZE + DEFAULT_DATA_MAP_SIZE;
-        #[cfg(feature="variable-data-map-size")]
-            let map_size: usize = CODE_MAP_SIZE + args.data_map_size;
 
         let mut shmem_provider = StdShMemProvider::new().unwrap();
-        let mut shmem = shmem_provider.new_shmem(map_size).unwrap();
+        let mut shmem_edges = shmem_provider.new_shmem(CODE_MAP_SIZE).unwrap();
 
-        shmem
+        shmem_edges
             .write_to_env("__AFL_SHM_ID")
             .expect("couldn't write shared memory id");
 
-        let (shmem_edges, shmem_data) = shmem.as_mut_slice().split_at_mut(CODE_MAP_SIZE);
+        println!("{}", var("__AFL_SHM_ID").unwrap());
 
-    #[cfg(not(any(feature = "data-cov-only", feature = "edge-cov-only")))]
-    let calibration_observer = unsafe {
-        ConstMapObserver::<_, { CODE_MAP_SIZE + DEFAULT_DATA_MAP_SIZE }>
-            ::from_mut_ptr("two_as_one", shmem_edges.as_mut_ptr().clone())
-    };
+        let mut shmem_data = shmem_provider.new_shmem(DEFAULT_DATA_MAP_SIZE).unwrap();
 
-    let edge_cov_observer =
-        HitcountsMapObserver::new(ConstMapObserver::<_, CODE_MAP_SIZE>::new(
-        // Must be the same name for all fuzzing instances with the same configuration, otherwise the whole thing crashes
-        "edges",
-        shmem_edges,
-    ));
+        shmem_data
+            .write_to_env("__STORFUZZ_SHM_ID")
+            .expect("couldn't write shared memory id");
 
-        #[cfg(feature="variable-data-map-size")]
-            let data_cov_observer = unsafe {
-                StdMapObserver::<_, false>::new(
-                    // Must be the same name for all fuzzing instances with the same configuration, otherwise the whole thing crashes
-                    "data",
-                    shmem_data,
-                )
-            };
-        #[cfg(not(feature="variable-data-map-size"))]
-            let data_cov_observer = ConstMapObserver::<_, DEFAULT_DATA_MAP_SIZE>::new(
-                // Must be the same name for all fuzzing instances with the same configuration, otherwise the whole thing crashes
-                "data",
-                shmem_data,
-            );
+        println!("{}", var("__STORFUZZ_SHM_ID").unwrap());
+
+        let calibration_observer = MultiMapObserver::new("calibration",
+                                                         unsafe {vec!{
+                                                             OwnedMutSlice::from_raw_parts_mut(shmem_edges.as_mut_slice().as_mut_ptr(), EDGES_MAP_SIZE),
+                                                             OwnedMutSlice::from_raw_parts_mut(shmem_data.as_mut_slice().as_mut_ptr(), DEFAULT_DATA_MAP_SIZE),
+                                                         }}
+        );
+
+        let edge_cov_observer =
+            HitcountsMapObserver::new(ConstMapObserver::<_, CODE_MAP_SIZE>::new(
+            // Must be the same name for all fuzzing instances with the same configuration, otherwise the whole thing crashes
+            "edges",
+            shmem_edges.as_mut_slice(),
+        ));
+
+        let data_cov_observer = ConstMapObserver::<_, DEFAULT_DATA_MAP_SIZE>::new(
+            // Must be the same name for all fuzzing instances with the same configuration, otherwise the whole thing crashes
+            "data",
+            shmem_data.as_mut_slice(),
+        );
+
 
         let time_observer = TimeObserver::new("time");
 
@@ -423,7 +402,7 @@ fn main() {
 
         let fork_server = fork_server_builder
             .debug_child(args.debug_child)
-            .coverage_map_size(map_size)
+            .coverage_map_size(DEFAULT_DATA_MAP_SIZE + EDGES_MAP_SIZE)
             .build(observers)
             .unwrap();
 
