@@ -9,6 +9,7 @@ default = ["std"]
 std = []
 no_link_main = ["libafl_targets/libfuzzer_no_link_main"]
 safe_alloc = ["libafl/safe_alloc_for_inprocess"]
+lossy_aggregation = ["libafl_targets/storfuzz_lossy_aggregation"]
 
 [profile.release]
 lto = true
