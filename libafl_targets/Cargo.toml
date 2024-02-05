@@ -28,8 +28,7 @@ default = [
     "forkserver",
     "cmplog",
     "coverage",
-    "common",
-    "storfuzz_lossy_aggregation"
+    "common"
 ]
 std = ["libafl/std"]
 libfuzzer = ["std", "common", "sanitizer_interfaces"]
