@@ -36,7 +36,7 @@ inline extern void __storfuzz_aggregate_value(uint8_t loc_id, uint64_t value){
   if((int64_t)value >= 0x400000){
     return;
   }
-# ifdef USE_VARIANT_1
+# ifdef STORFUZZ_LOSSY_AGGREGATION
 //  uint32_t val = value;
 
   uint64_t res = 0;

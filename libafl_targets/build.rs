@@ -216,7 +216,7 @@ fn main() {
     builder.define("STORFUZZ_MAP_SIZE", Some(&*format!("{storfuzz_map_size}")));
 
     #[cfg(feature = "storfuzz_lossy_aggregation")]
-    builder.define("USE_VARIANT_1", None);
+    builder.define("STORFUZZ_LOSSY_AGGREGATION", None);
 
     builder.compile("storfuzz");
 
