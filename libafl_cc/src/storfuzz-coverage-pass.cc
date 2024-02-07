@@ -517,6 +517,23 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
                 };
                 if(skip)
                   continue;
+                // If the type we started casting from, was not an integer, we don't want it
+                IntegerType *actual_storedType;
+                if(!(actual_storedType = dyn_cast<IntegerType>(actual_storedValue->getType()))){
+                  // Include a message in the output, if the type of the value
+                  // before casting is fundamentally different from the type
+                  // after casting
+                  if(((bool) actual_storedType) ^ ((bool) storedType) && log_this_time){
+                    std::string        msg;
+                    raw_string_ostream msg_stream(msg);
+
+                    msg_stream << "\"" << *actual_storedValue->getType() << "\" | \"" <<
+                        *storedValue->getType() << "\"";
+                    log("TYPE_DISAGREEMENT", msg);
+                  }
+                  continue;
+                }
+
                 if (getenv("STORFUZZ_VERBOSE")) {
                   errs() << "BB: " << BB << "\n";
                   errs() << "Stored value: " << *storedValue << "\n";
