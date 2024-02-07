@@ -49,6 +49,10 @@ use libafl_targets::{
     libfuzzer_initialize, libfuzzer_test_one_input, std_edges_map_observer, std_storfuzz_map_observer,
     storfuzz_map_mut_slice, edges_map_mut_slice
 };
+
+#[cfg(feature = "storfuzz_introspection")]
+use libafl_targets::__storfuzz_introspect;
+
 #[cfg(unix)]
 use nix::{self, unistd::dup};
 
@@ -219,8 +223,16 @@ fn fuzz(
             |s| {
                 if secs_between_log_msgs.is_zero() || last_log_event + secs_between_log_msgs < current_time() {
                     last_log_event = current_time();
-                    writeln!(&mut stdout_cpy, "{s}").unwrap();
-                    writeln!(log.borrow_mut(), "{:?} {s}", current_time()).unwrap();
+                    #[cfg(feature = "storfuzz_introspection")]
+                    {
+                        let storfuzz_stats = unsafe { __storfuzz_introspect() };
+                        writeln!(&mut stdout_cpy, "{s}, total_stores:{}, skipped_stores:{}", storfuzz_stats.total_count, storfuzz_stats.count_skipped).unwrap();
+                        writeln!(log.borrow_mut(), "{:?} {s}, total_stores:{}, skipped_stores:{}", current_time(), storfuzz_stats.total_count, storfuzz_stats.count_skipped).unwrap();
+                    }
+                    #[cfg(not(feature = "storfuzz_introspection"))]{
+                        writeln!(&mut stdout_cpy, "{s}").unwrap();
+                        writeln!(log.borrow_mut(), "{:?} {s}", current_time()).unwrap();
+                    }
                 }
             },
             true
@@ -396,7 +408,7 @@ fn fuzz(
     {
         let null_fd = file_null.as_raw_fd();
         dup2(null_fd, io::stdout().as_raw_fd())?;
-        if !std::env::var("LIBAFL_FUZZBENCH_DEBUG").is_ok() {
+        if !var("LIBAFL_FUZZBENCH_DEBUG").is_ok() {
             dup2(null_fd, io::stderr().as_raw_fd())?;
         }
     }
