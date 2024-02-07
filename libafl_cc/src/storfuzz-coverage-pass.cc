@@ -472,16 +472,51 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
               Value *storedValue;
               storedValue = storeInst->getValueOperand();
 
+              Instruction *valueDefInstruction;
               // If the stored value does not stem from an instruction it is not
               // interesting
-              Instruction *valueDefInstruction;
-              if (!(valueDefInstruction = dyn_cast<Instruction>(storedValue)))
-                // TODO: Check for interesting operations (e.g. not simply a load and store, but some change)
+              // Ensure valueDefInstruction is exactly the SSA Value stored by storeInst
+              if (!(valueDefInstruction =
+                        dyn_cast<Instruction>(storedValue)))
                 continue;
 
               IntegerType *storedType;
               if ((storedType =
                        dyn_cast<IntegerType>(storedValue->getType()))) {
+
+                // Try to get the value before the cast, if the stored value
+                // does not stem from an instruction it is not interesting
+                Instruction* actual_valueDefInstruction = valueDefInstruction;
+                Value* actual_storedValue = storedValue;
+                bool skip = false;
+                while (!skip) {
+                  if (!(actual_valueDefInstruction =
+                            dyn_cast<Instruction>(actual_storedValue))){
+                    skip = true;
+                    break;
+                  } else if (actual_valueDefInstruction->isCast()) {
+                    Instruction *castInstruction;
+                    assert((castInstruction =
+                                dyn_cast<CastInst>(actual_valueDefInstruction)));
+
+                    // Get the value before the cast
+                    actual_storedValue =
+                        castInstruction->getOperand(0);
+
+                    if (log_this_time) {
+                      std::string        msg;
+                      raw_string_ostream msg_stream(msg);
+
+                      msg_stream << "\"" << *actual_storedValue << "\" | \""
+                                 << *castInstruction << "\"";
+                      log("UNCASTED", msg);
+                    }
+                  } else {
+                    break;
+                  }
+                };
+                if(skip)
+                  continue;
                 if (getenv("STORFUZZ_VERBOSE")) {
                   errs() << "BB: " << BB << "\n";
                   errs() << "Stored value: " << *storedValue << "\n";
