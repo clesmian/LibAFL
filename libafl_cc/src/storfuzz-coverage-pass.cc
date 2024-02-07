@@ -517,6 +517,20 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
                 };
                 if(skip)
                   continue;
+
+                if (isa<LoadInst>(actual_valueDefInstruction)){
+                  if(log_this_time) {
+                    std::string        msg;
+                    raw_string_ostream msg_stream(msg);
+
+                    msg_stream << "\"" << actual_valueDefInstruction->getOpcodeName() << "\" | \"" <<
+                        *actual_valueDefInstruction << "\" | \"" <<
+                        *valueDefInstruction << "\"";
+                    log("SKIPPED", msg);
+                  }
+                  continue;
+                }
+
                 // If the type we started casting from, was not an integer, we don't want it
                 IntegerType *actual_storedType;
                 if(!(actual_storedType = dyn_cast<IntegerType>(actual_storedValue->getType()))){
