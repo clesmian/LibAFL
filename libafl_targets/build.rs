@@ -218,6 +218,9 @@ fn main() {
     #[cfg(feature = "storfuzz_lossy_aggregation")]
     builder.define("STORFUZZ_LOSSY_AGGREGATION", None);
 
+    #[cfg(feature = "storfuzz_introspection")]
+    builder.define("STORFUZZ_INTROSPECTION", None);
+
     builder.compile("storfuzz");
 
     #[cfg(feature = "forkserver")]

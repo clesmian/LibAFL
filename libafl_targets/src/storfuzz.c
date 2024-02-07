@@ -3,9 +3,27 @@
 extern uint8_t __storfuzz_area_ptr_local[STORFUZZ_MAP_SIZE];
 uint8_t       *__storfuzz_area_ptr = __storfuzz_area_ptr_local;
 
+struct stats
+{
+  uint64_t total_count;
+  uint64_t count_skipped;
+} __storfuzz_stats = {0,0};
+
+// This only produces meaningful results, if we are NOT using inline 
+// instrumentation and define STORFUZZ_INTROSPECTION upon build 
+extern struct stats __storfuzz_introspect(){
+  return __storfuzz_stats;
+}
+
 inline extern void __storfuzz_record_value(uint16_t loc_id, uint8_t bitmask, uint64_t value){
+#ifdef STORFUZZ_INTROSPECTION
+  __storfuzz_stats.total_count++;
+#endif
   // Skip pointer logic
   if((int64_t)value >= 0x400000){
+#ifdef STORFUZZ_INTROSPECTION
+    __storfuzz_stats.count_skipped++;
+#endif
     return;
   }
   uint16_t reduced = 0xff & (value ^ (value >> 8));
@@ -32,8 +50,14 @@ inline extern void __storfuzz_store_aggregated_value(uint16_t bb_id, uint8_t bit
 }
 
 inline extern void __storfuzz_aggregate_value(uint8_t loc_id, uint64_t value){
+#ifdef STORFUZZ_INTROSPECTION
+  __storfuzz_stats.total_count++;
+#endif
   // Skip pointer logic
   if((int64_t)value >= 0x400000){
+#ifdef STORFUZZ_INTROSPECTION
+    __storfuzz_stats.count_skipped++;
+#endif
     return;
   }
 # ifdef STORFUZZ_LOSSY_AGGREGATION

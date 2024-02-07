@@ -9,11 +9,26 @@ use crate::STORFUZZ_MAP_SIZE;
 pub static mut __storfuzz_area_ptr_local: [u8; STORFUZZ_MAP_SIZE] = [0; STORFUZZ_MAP_SIZE];
 pub use __storfuzz_area_ptr_local as STORFUZZ_MAP;
 
+#[cfg(feature = "storfuzz_introspection")]
+#[derive(Debug)]
+#[repr(C)]
+/// Stats struct returned by instrumentation
+pub struct stats{
+    /// Total number of stores sent to instrumentation
+    pub total_count: u64,
+    /// Number of stores skipped by instrumentation
+    pub count_skipped: u64,
+}
+#[cfg(feature = "storfuzz_introspection")]
+extern "C"{
+    /// Dump StorFuzz introspection stats to stderr
+    /// (Only meaningful, if NOT using inline instrumentation AND built with STORFUZZ_INTROSPECTION)
+    pub fn __storfuzz_introspect() -> stats;
+}
 
 extern "C" {
     /// The area pointer points to the edges map.
     pub static mut __storfuzz_area_ptr: *mut u8;
-
 }
 pub use __storfuzz_area_ptr as STORFUZZ_MAP_PTR;
 

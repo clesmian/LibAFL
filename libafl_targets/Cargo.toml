@@ -46,6 +46,7 @@ sancov_cmplog = ["common"] # Defines cmp and __sanitizer_weak_hook functions. Us
 sancov_pcguard = ["sancov_pcguard_hitcounts"]
 sanitizer_interfaces = []
 storfuzz_lossy_aggregation = [] # Use lossy aggregation method for storfuzz in case of ONE_INSTRUMENTATION_PER_BB
+storfuzz_introspection = [] # Add introspection functionality to storfuzz instrumentation
 clippy = [] # Ignore compiler warnings during clippy
 observers = ["meminterval", "ahash"]
 common = [] # Compile common C code defining sanitizer options and cross-platform intrinsics
