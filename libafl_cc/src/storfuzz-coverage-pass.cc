@@ -456,6 +456,9 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
           BB_store_count = 0;
         }
 
+        // Ensure we only log stuff once
+        bool log_this_time = !instrument_this_time;
+
         for (auto &instr : BB) {
           StoreInst *storeInst;
           if ((storeInst = dyn_cast<StoreInst>(&instr))) {
@@ -463,9 +466,11 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
             // instrumentation
             if (storeInst->getMetadata("nosanitize") != nullptr) continue;
 
+            // Don't instrument stores to alloca'd locations
             Value *storeLocation = storeInst->getPointerOperand();
             if (!(dyn_cast<AllocaInst>(storeLocation))) {
-              Value *storedValue = storeInst->getValueOperand();
+              Value *storedValue;
+              storedValue = storeInst->getValueOperand();
 
               // If the stored value does not stem from an instruction it is not
               // interesting
@@ -474,9 +479,9 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
                 // TODO: Check for interesting operations (e.g. not simply a load and store, but some change)
                 continue;
 
-              IntegerType *storedType =
-                  dyn_cast<IntegerType>(storedValue->getType());
-              if (storedType) {
+              IntegerType *storedType;
+              if ((storedType =
+                       dyn_cast<IntegerType>(storedValue->getType()))) {
                 if (getenv("STORFUZZ_VERBOSE")) {
                   errs() << "BB: " << BB << "\n";
                   errs() << "Stored value: " << *storedValue << "\n";
@@ -485,7 +490,7 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
 #ifdef USE_NEW_PM
                 // Some logging of known value ranges
                 auto valRange = LVI->getConstantRange(storedValue, storeInst, true);
-                if(!instrument_this_time){
+                if(log_this_time){
                   std::string msg;
                   raw_string_ostream msg_stream(msg);
 
