@@ -27,6 +27,7 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Analysis/LazyValueInfo.h"
+#include "llvm/Analysis/LoopInfo.h"
 #include "llvm/IR/ConstantRange.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/StringSet.h"
@@ -205,6 +206,20 @@ class StorFuzzCoverage : public ModulePass {
       if (StringRef::npos != F->getName().find(ignoreListFunc)) { return true; }
     }
 
+    return false;
+  }
+
+  static bool isSmallConstantAdditionOrSubtraction(Instruction* instr,
+                                                   uint64_t smallConstant = 2){
+    if(instr->getOpcode() == Instruction::Add ||
+        instr->getOpcode() == Instruction::Sub) {
+      for (auto op : instr->operand_values()) {
+        if (isa<ConstantInt>(op) &&
+            (cast<ConstantInt>(op)->getValue().abs().ule(smallConstant))) {
+          return true;
+        }
+      }
+    }
     return false;
   }
 
@@ -425,6 +440,7 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
     if (F.size() < function_minimum_size) { continue; }
 #ifdef USE_NEW_PM
     auto *LVI = &FAM.getResult<LazyValueAnalysis>(F);
+    auto *LoopInfo = &FAM.getResult<LoopAnalysis>(F);
 
 #endif
 
@@ -533,6 +549,63 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
                     log("SKIPPED", msg);
                   }
                   continue;
+                } else if(isSmallConstantAdditionOrSubtraction(actual_valueDefInstruction)){
+                  bool is_loop_ctr = false;
+#ifdef USE_NEW_PM
+                  auto loop = LoopInfo->getLoopFor(actual_valueDefInstruction->getParent());
+
+                  while(loop && !is_loop_ctr){
+                    auto cmp_instr = loop->getLatchCmpInst();
+                    if (cmp_instr){
+                      for(auto val: cmp_instr->operand_values()){
+                        if(isa<Instruction>(val)){
+                          // Easy case
+                          if (val == actual_storedValue ||
+                              val == storeLocation ||
+                              val == storedValue) {
+                            is_loop_ctr = true;
+                          }
+                          // Allow for one level of indirection
+                          for(auto indirect_val : cast<Instruction>(val)->operand_values()) {
+                            if (indirect_val == actual_storedValue ||
+                                indirect_val == storeLocation ||
+                                indirect_val == storedValue) {
+                              is_loop_ctr = true;
+                              break;
+                            }
+                          }
+                          if(is_loop_ctr)
+                            break;
+                        }
+
+                      }
+                    }
+
+                    loop = loop->getParentLoop();
+                  }
+
+
+                  if(is_loop_ctr) {
+                    // FIXME: This detection is not complete!
+                    // We miss many loop counters
+                    if (log_this_time) {
+                      std::string        msg;
+                      raw_string_ostream msg_stream(msg);
+
+                      msg_stream << "\""
+                                 << actual_valueDefInstruction->getOpcodeName()
+                                 << "\" | \"" << *actual_valueDefInstruction
+                                 << "\" | \"";
+                      if (valueDefInstruction != actual_valueDefInstruction) {
+                        msg_stream << *valueDefInstruction;
+                      }
+                      msg_stream << "\"";
+
+                      log("SKIPPED_LOOP_CTR", msg);
+                    }
+                    continue;
+                  }
+#endif
                 }
 
                 // If the type we started casting from, was not an integer, we don't want it
