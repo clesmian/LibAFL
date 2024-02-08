@@ -518,7 +518,7 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
                 if(skip)
                   continue;
 
-                if (isa<LoadInst>(actual_valueDefInstruction)){
+                if (isa<LoadInst, VAArgInst>(actual_valueDefInstruction)){
                   if(log_this_time) {
                     std::string        msg;
                     raw_string_ostream msg_stream(msg);
