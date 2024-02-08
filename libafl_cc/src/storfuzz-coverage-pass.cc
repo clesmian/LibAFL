@@ -524,8 +524,12 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
                     raw_string_ostream msg_stream(msg);
 
                     msg_stream << "\"" << actual_valueDefInstruction->getOpcodeName() << "\" | \"" <<
-                        *actual_valueDefInstruction << "\" | \"" <<
-                        *valueDefInstruction << "\"";
+                        *actual_valueDefInstruction << "\" | \"";
+                    if (valueDefInstruction != actual_valueDefInstruction){
+                      msg_stream << *valueDefInstruction;
+                    }
+                    msg_stream << "\"";
+
                     log("SKIPPED", msg);
                   }
                   continue;
