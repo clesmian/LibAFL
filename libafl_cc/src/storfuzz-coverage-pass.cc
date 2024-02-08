@@ -553,6 +553,37 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
                 }
 
                 if (getenv("STORFUZZ_VERBOSE")) {
+                  if(log_this_time) {
+                    std::string        msg;
+                    raw_string_ostream msg_stream(msg);
+
+                    if(isa<CallInst,InvokeInst>(actual_valueDefInstruction)){
+                      CallBase* callInst = cast<CallBase>(actual_valueDefInstruction);
+
+                      msg_stream << "\""
+                                 << actual_valueDefInstruction->getOpcodeName()
+                                 << "\" | \"" << callInst->getCalledFunction()->getName()
+                                 << "\" | \"" << *actual_valueDefInstruction
+                                 << "\" | \"" ;
+                      if (valueDefInstruction != actual_valueDefInstruction){
+                        msg_stream << *valueDefInstruction;
+                      }
+                      msg_stream <<"\"";
+
+                      log("INSTRUMENT_RETURN_VALUE", msg);
+                    } else {
+                      msg_stream << "\""
+                                 << actual_valueDefInstruction->getOpcodeName()
+                                 << "\" | \"" << *actual_valueDefInstruction
+                                 << "\" | \"" ;
+                      if (valueDefInstruction != actual_valueDefInstruction){
+                        msg_stream << *valueDefInstruction;
+                      }
+                      msg_stream << "\"";
+                      log("INSTRUMENT_VALUE", msg);
+                    }
+                  }
+
                   errs() << "BB: " << BB << "\n";
                   errs() << "Stored value: " << *storedValue << "\n";
                   errs() << "Store instruction: " << *storeInst << "\n";
