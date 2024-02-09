@@ -58,11 +58,16 @@ std::mutex(logMutex);
 bool logToFile = true;
 std::ofstream *logFile = nullptr;
 
-static void log(std::string prefix,std::string msg){
+static void log(std::string prefix,std::string msg,bool multiline_msg = false){
   if(logToFile){
     logToFile = getenv("STORFUZZ_LOG_TO_FILE") != nullptr;
     if(__glibc_unlikely(!logToFile)){
       return;
+    }
+
+    if(!multiline_msg){
+      // Remove occasional newlines
+      erase_if(msg, [](char x) { return x == '\n' ;});
     }
 
     auto complete_msg = prefix.append(" | ").append(msg);
@@ -697,7 +702,6 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
                   }
 
 
-                  erase_if(msg, [](char x) { return x == '\n' ;});
                   log("VAL_RANGES", msg);
                 }
 #endif
