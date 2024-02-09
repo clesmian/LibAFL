@@ -46,6 +46,8 @@ use libafl::{corpus::{
 
 use libafl::monitors::SimpleMonitor;
 
+use storfuzz_constants::{CODE_MAP_SIZE, DEFAULT_DATA_MAP_SIZE};
+
 #[cfg(all(feature = "data-cov-only", feature = "edge-cov-only"))]
 compile_error!("Cannot use features data-cov-only and edge-cov-only together");
 
@@ -131,10 +133,6 @@ fn main() {
     );
 
     // CHECK STARTING FROM HERE
-
-    const CODE_MAP_SIZE: usize = 1 << 17;
-    const DEFAULT_DATA_MAP_SIZE: usize = 1 << 17;
-
 
     let map_size: usize = CODE_MAP_SIZE + DEFAULT_DATA_MAP_SIZE;
 
