@@ -316,6 +316,9 @@ pub const LIBAFL_CC_LLVM_VERSION: Option<usize> = None;
     let edges_map_size: usize = option_env!("LIBAFL_EDGES_MAP_SIZE")
         .map_or(Ok(65536), str::parse)
         .expect("Could not parse LIBAFL_EDGES_MAP_SIZE");
+    if !edges_map_size.is_power_of_two(){
+        panic!("LIBAFL_EDGES_MAP_SIZE must be a power of two")
+    }
     cxxflags.push(format!("-DLIBAFL_EDGES_MAP_SIZE={edges_map_size}"));
 
 
