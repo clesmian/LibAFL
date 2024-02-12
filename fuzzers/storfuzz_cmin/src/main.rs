@@ -234,7 +234,7 @@ fn main() {
         }
     }
 
-    let observers = tuple_list!(edge_cov_observer, data_cov_observer, time_observer);
+    let observers = tuple_list!(edge_cov_observer, data_cov_observer, time_observer, minimizer_observer);
 
     let fork_server = fork_server_builder
         .debug_child(args.debug_child)
