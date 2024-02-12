@@ -326,6 +326,9 @@ pub const LIBAFL_CC_LLVM_VERSION: Option<usize> = None;
         .map_or(Ok(1 << 17), str::parse)
         .expect("Could not parse STORFUZZ_MAP_SIZE");
     cxxflags.push(format!("-DSTORFUZZ_MAP_SIZE={storfuzz_map_size}"));
+    if !storfuzz_map_size.is_power_of_two(){
+        panic!("STORFUZZ_MAP_SIZE must be a power of two")
+    }
 
     let acc_map_size: usize = option_env!("LIBAFL_ACCOUNTING_MAP_SIZE")
         .map_or(Ok(65536), str::parse)

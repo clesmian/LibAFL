@@ -15,9 +15,15 @@ fn main() {
     let edges_map_size: usize = option_env!("LIBAFL_EDGES_MAP_SIZE")
         .map_or(Ok(65536), str::parse)
         .expect("Could not parse LIBAFL_EDGES_MAP_SIZE");
+    if !edges_map_size.is_power_of_two(){
+        panic!("LIBAFL_EDGES_MAP_SIZE must be a power of two")
+    }
     let storfuzz_map_size: usize = option_env!("STORFUZZ_MAP_SIZE")
         .map_or(Ok(1 << 17), str::parse)
         .expect("Could not parse STORFUZZ_MAP_SIZE");
+    if !storfuzz_map_size.is_power_of_two(){
+        panic!("STORFUZZ_MAP_SIZE must be a power of two")
+    }
     let cmp_map_size: usize = option_env!("LIBAFL_CMP_MAP_SIZE")
         .map_or(Ok(65536), str::parse)
         .expect("Could not parse LIBAFL_CMP_MAP_SIZE");
