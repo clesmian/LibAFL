@@ -28,7 +28,8 @@ cc = { version = "1.0", features = ["parallel"] }
 which = "4.4"
 
 [dependencies]
-libafl = { path = "../../libafl" }
+# We can use CXXSTDLIB=stdc++/CXXSTDLIB=c++ to set the stdlib implemenation used by z3
+libafl = { path = "../../libafl", features = ["cmin"] }
 libafl_bolts = { path = "../../libafl_bolts" }
 libafl_targets = { path = "../../libafl_targets", features = ["sancov_pcguard_hitcounts", "sancov_cmplog", "libfuzzer"] }
 libafl_cc = { path = "../../libafl_cc" }
