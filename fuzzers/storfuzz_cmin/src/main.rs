@@ -270,6 +270,6 @@ fn main() {
     minimizer.minimize(&mut fuzzer, &mut executor, &mut mgr, &mut state)
         .expect("Failed to minimize corpus");
 
-    println!("Minimized corpus to {} cases ({}%)",
-             orig_size - state.corpus().count(), 100*(state.corpus().count()/orig_size));
+    println!("Minimized corpus from {} to {} test cases ({}%)",
+             orig_size, state.corpus().count(), 100*((state.corpus().count() as f64)/orig_size));
 }
