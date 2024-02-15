@@ -286,6 +286,7 @@ class StorFuzzCoverage : public ModulePass {
 
   // Value.printNameOrAsOperand is only available in debug builds
   std::string printNameOrAsOperandInRelease(Value* value, Module* M = nullptr, bool printType = true){
+    assert(value != nullptr);
     if (!value->getName().empty())
       return std::string(value->getName());
 
