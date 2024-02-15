@@ -632,12 +632,18 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
                 }
 
                 if (getenv("STORFUZZ_VERBOSE")) {
-                  if(log_this_time) {
-                    std::string        msg;
-                    raw_string_ostream msg_stream(msg);
+                  errs() << "BB: " << BB << "\n";
+                  errs() << "Stored value: " << *storedValue << "\n";
+                  errs() << "Store instruction: " << *storeInst << "\n";
+                }
 
-                    if(isa<CallInst,InvokeInst>(actual_valueDefInstruction)){
-                      CallBase* callInst = cast<CallBase>(actual_valueDefInstruction);
+
+                if(log_this_time) {
+                  std::string        msg;
+                  raw_string_ostream msg_stream(msg);
+
+                  if(isa<CallInst,InvokeInst>(actual_valueDefInstruction)){
+                    CallBase* callInst = cast<CallBase>(actual_valueDefInstruction);
 
                     msg_stream << "\""
                                << actual_valueDefInstruction->getOpcodeName()
@@ -654,24 +660,20 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
                     }
                     msg_stream <<"\"";
 
-                      log("INSTRUMENT_RETURN_VALUE", msg);
-                    } else {
-                      msg_stream << "\""
-                                 << actual_valueDefInstruction->getOpcodeName()
-                                 << "\" | \"" << *actual_valueDefInstruction
-                                 << "\" | \"" ;
-                      if (valueDefInstruction != actual_valueDefInstruction){
-                        msg_stream << *valueDefInstruction;
-                      }
-                      msg_stream << "\"";
-                      log("INSTRUMENT_VALUE", msg);
+                    log("INSTRUMENT_RETURN_VALUE", msg);
+                  } else {
+                    msg_stream << "\""
+                               << actual_valueDefInstruction->getOpcodeName()
+                               << "\" | \"" << *actual_valueDefInstruction
+                               << "\" | \"" ;
+                    if (valueDefInstruction != actual_valueDefInstruction){
+                      msg_stream << *valueDefInstruction;
                     }
+                    msg_stream << "\"";
+                    log("INSTRUMENT_VALUE", msg);
                   }
-
-                  errs() << "BB: " << BB << "\n";
-                  errs() << "Stored value: " << *storedValue << "\n";
-                  errs() << "Store instruction: " << *storeInst << "\n";
                 }
+
 #ifdef USE_NEW_PM
                 // Some logging of known value ranges
                 auto valRange = LVI->getConstantRange(storedValue, storeInst, true);
