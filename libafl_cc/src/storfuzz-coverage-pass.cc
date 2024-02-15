@@ -676,7 +676,6 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
 
                   msg_stream << "\""
                              << *storeLocation << " (" << printNameOrAsOperandInRelease(storeLocation, &M, true) << ")\" | \""
-                  // It is a known issue that there might be newlines in this part (e.g. with invoke)
                              << *storedValue << "\" | \""
                              << valRange << "\" | \""
                   // Some info on the value type and range
