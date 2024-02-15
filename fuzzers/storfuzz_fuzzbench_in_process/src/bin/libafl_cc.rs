@@ -46,7 +46,6 @@ pub fn main() {
             .expect("Failed to parse the command line")
             .add_pass(LLVMPasses::StorFuzzCoverage)
             .link_staticlib(&dir, "storfuzz_fuzzbench_in_process")
-            .add_link_arg("-lc++")
             .run()
             .expect("Failed to run the wrapped compiler")
         {
