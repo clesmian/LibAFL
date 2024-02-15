@@ -2,8 +2,9 @@
 
 use std::{env, fs::File, io::Write, path::Path};
 
-const TWO_MB: usize = 2_621_440;
-const SIXTY_FIVE_KB: usize = 65_536;
+const ONE_MB: usize = 1 << 20;
+const SIXTY_FOUR_KB: usize = 65_536;
+const ONE_TWENTY_EIGHT_KB: usize = SIXTY_FOUR_KB * 2;
 
 #[allow(clippy::too_many_lines)]
 fn main() {
@@ -17,28 +18,28 @@ fn main() {
     let mut constants_file = File::create(dest_path).expect("Could not create file");
 
     let edges_map_size: usize = option_env!("LIBAFL_EDGES_MAP_SIZE")
-        .map_or(Ok(TWO_MB), str::parse)
+        .map_or(Ok(2 * ONE_MB), str::parse)
         .expect("Could not parse LIBAFL_EDGES_MAP_SIZE");
     if !edges_map_size.is_power_of_two(){
         panic!("LIBAFL_EDGES_MAP_SIZE must be a power of two")
     }
     let storfuzz_map_size: usize = option_env!("STORFUZZ_MAP_SIZE")
-        .map_or(Ok(1 << 17), str::parse)
+        .map_or(Ok(ONE_TWENTY_EIGHT_KB), str::parse)
         .expect("Could not parse STORFUZZ_MAP_SIZE");
     if !storfuzz_map_size.is_power_of_two(){
         panic!("STORFUZZ_MAP_SIZE must be a power of two")
     }
     let cmp_map_size: usize = option_env!("LIBAFL_CMP_MAP_SIZE")
-        .map_or(Ok(SIXTY_FIVE_KB), str::parse)
+        .map_or(Ok(SIXTY_FOUR_KB), str::parse)
         .expect("Could not parse LIBAFL_CMP_MAP_SIZE");
     let cmplog_map_w: usize = option_env!("LIBAFL_CMPLOG_MAP_W")
-        .map_or(Ok(SIXTY_FIVE_KB), str::parse)
+        .map_or(Ok(SIXTY_FOUR_KB), str::parse)
         .expect("Could not parse LIBAFL_CMPLOG_MAP_W");
     let cmplog_map_h: usize = option_env!("LIBAFL_CMPLOG_MAP_H")
         .map_or(Ok(32), str::parse)
         .expect("Could not parse LIBAFL_CMPLOG_MAP_H");
     let acc_map_size: usize = option_env!("LIBAFL_ACCOUNTING_MAP_SIZE")
-        .map_or(Ok(SIXTY_FIVE_KB), str::parse)
+        .map_or(Ok(SIXTY_FOUR_KB), str::parse)
         .expect("Could not parse LIBAFL_ACCOUNTING_MAP_SIZE");
 
     write!(

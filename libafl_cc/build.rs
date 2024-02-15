@@ -19,6 +19,10 @@ const LLVM_VERSION_MAX: u32 = 33;
 #[cfg(not(target_vendor = "apple"))]
 const LLVM_VERSION_MIN: u32 = 6;
 
+const ONE_MB: usize = 1 << 20;
+const SIXTY_FOUR_KB: usize = 65_536;
+const ONE_TWENTY_EIGHT_KB: usize = SIXTY_FOUR_KB * 2;
+
 /// Get the extension for a shared object
 fn dll_extension<'a>() -> &'a str {
     if let Ok(vendor) = env::var("CARGO_CFG_TARGET_VENDOR") {
@@ -314,7 +318,7 @@ pub const LIBAFL_CC_LLVM_VERSION: Option<usize> = None;
     cxxflags.push(String::from("-Wall"));
 
     let edges_map_size: usize = option_env!("LIBAFL_EDGES_MAP_SIZE")
-        .map_or(Ok(2_621_440), str::parse)
+        .map_or(Ok(2 * ONE_MB), str::parse)
         .expect("Could not parse LIBAFL_EDGES_MAP_SIZE");
     if !edges_map_size.is_power_of_two(){
         panic!("LIBAFL_EDGES_MAP_SIZE must be a power of two")
@@ -323,7 +327,7 @@ pub const LIBAFL_CC_LLVM_VERSION: Option<usize> = None;
 
 
     let storfuzz_map_size: usize = option_env!("STORFUZZ_MAP_SIZE")
-        .map_or(Ok(1 << 17), str::parse)
+        .map_or(Ok(ONE_TWENTY_EIGHT_KB), str::parse)
         .expect("Could not parse STORFUZZ_MAP_SIZE");
     cxxflags.push(format!("-DSTORFUZZ_MAP_SIZE={storfuzz_map_size}"));
     if !storfuzz_map_size.is_power_of_two(){
@@ -331,7 +335,7 @@ pub const LIBAFL_CC_LLVM_VERSION: Option<usize> = None;
     }
 
     let acc_map_size: usize = option_env!("LIBAFL_ACCOUNTING_MAP_SIZE")
-        .map_or(Ok(65_536), str::parse)
+        .map_or(Ok(SIXTY_FOUR_KB), str::parse)
         .expect("Could not parse LIBAFL_ACCOUNTING_MAP_SIZE");
     cxxflags.push(format!("-DLIBAFL_ACCOUNTING_MAP_SIZE={acc_map_size}"));
 
