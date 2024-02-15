@@ -42,7 +42,7 @@ use libafl::feedbacks::AflMapFeedback;
 use libafl::observers::MultiMapObserver;
 use libafl::prelude::MapFeedbackMetadata;
 use libafl::state::HasNamedMetadata;
-use libafl_bolts::{current_nanos, current_time, os::dup2, rands::StdRand, shmem::{ShMemProvider, StdShMemProvider}, tuples::{tuple_list, Merge}, AsSlice, Named};
+use libafl_bolts::{current_nanos, current_time, os::dup, os::dup2, rands::StdRand, shmem::{ShMemProvider, StdShMemProvider}, tuples::{tuple_list, Merge}, AsSlice, Named};
 #[cfg(any(target_os = "linux", target_vendor = "apple"))]
 use libafl_targets::autotokens;
 use libafl_targets::{
@@ -52,9 +52,6 @@ use libafl_targets::{
 
 #[cfg(feature = "storfuzz_introspection")]
 use libafl_targets::__storfuzz_introspect;
-
-#[cfg(unix)]
-use nix::{self, unistd::dup};
 
 use storfuzz_constants::DEFAULT_ASAN_OPTIONS;
 
