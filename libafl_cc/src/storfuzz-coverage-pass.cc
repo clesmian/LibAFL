@@ -639,15 +639,20 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
                     if(isa<CallInst,InvokeInst>(actual_valueDefInstruction)){
                       CallBase* callInst = cast<CallBase>(actual_valueDefInstruction);
 
-                      msg_stream << "\""
-                                 << actual_valueDefInstruction->getOpcodeName()
-                                 << "\" | \"" << callInst->getCalledFunction()->getName()
-                                 << "\" | \"" << *actual_valueDefInstruction
-                                 << "\" | \"" ;
-                      if (valueDefInstruction != actual_valueDefInstruction){
-                        msg_stream << *valueDefInstruction;
-                      }
-                      msg_stream <<"\"";
+                    msg_stream << "\""
+                               << actual_valueDefInstruction->getOpcodeName()
+                               << "\" | \"";
+                    if(callInst->getCalledFunction() && callInst->getCalledFunction()->hasName()){
+                      msg_stream << callInst->getCalledFunction()->getName();
+                    } else {
+                      msg_stream << *callInst;
+                    }
+                    msg_stream << "\" | \"" << *actual_valueDefInstruction
+                               << "\" | \"" ;
+                    if (valueDefInstruction != actual_valueDefInstruction){
+                      msg_stream << *valueDefInstruction;
+                    }
+                    msg_stream <<"\"";
 
                       log("INSTRUMENT_RETURN_VALUE", msg);
                     } else {
