@@ -35,7 +35,6 @@ use libafl::{
     events::SimpleEventManager,
     executors::{
         ForkserverExecutor,
-        TimeoutForkserverExecutor,
     },
     feedback_and_fast,
     feedback_or,
@@ -382,17 +381,15 @@ fn main() {
     #[cfg(any(feature = "data-cov-only", feature = "edge-cov-only"))]
     let observers = tuple_list!(edge_cov_observer, data_cov_observer, time_observer);
 
-
-    // TODO: Consider is_persistent and build_dynamic_map
-    let fork_server = fork_server_builder
-        .debug_child(args.debug_child)
-        .coverage_map_size(map_size)
-        .build(observers)
-        .unwrap();
-
     let timeout = Duration::from_millis(args.timeout);
 
-    let mut executor = TimeoutForkserverExecutor::new(fork_server, timeout).unwrap();
+// TODO: Consider is_persistent and build_dynamic_map
+    let mut executor = fork_server_builder
+        .debug_child(args.debug_child)
+        .coverage_map_size(map_size)
+        .timeout(timeout)
+        .build(observers)
+        .unwrap();
 
     let mut fuzzer = StdFuzzer::new(scheduler, feedback, objective);
 

@@ -24,7 +24,6 @@ use libafl::{corpus::{
     OnDiskCorpus,
 }, events::SimpleEventManager, executors::{
     ForkserverExecutor,
-    TimeoutForkserverExecutor,
 }, feedback_and_fast, feedback_or, feedbacks::{
     AflMapFeedback,
     ConstFeedback,
@@ -220,15 +219,14 @@ fn main() {
 
     let observers = tuple_list!(edge_cov_observer, data_cov_observer, time_observer);
 
-    let fork_server = fork_server_builder
-        .debug_child(args.debug_child)
-        .coverage_map_size(map_size)
-        .build(observers)
-        .unwrap();
-
     let timeout = Duration::from_millis(args.timeout);
 
-    let mut executor = TimeoutForkserverExecutor::new(fork_server, timeout).unwrap();
+    let mut executor = fork_server_builder
+        .debug_child(args.debug_child)
+        .coverage_map_size(map_size)
+        .timeout(timeout)
+        .build(observers)
+        .unwrap();
 
     let mut fuzzer = StdFuzzer::new(scheduler, feedback, objective);
 

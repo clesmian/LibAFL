@@ -18,7 +18,7 @@ use clap::{Parser,CommandFactory};
 use libafl::{
     corpus::{Corpus, InMemoryOnDiskCorpus, OnDiskCorpus},
     events::SimpleRestartingEventManager,
-    executors::{inprocess::InProcessExecutor, ExitKind, TimeoutExecutor},
+    executors::{inprocess::InProcessExecutor, ExitKind},
     feedback_or, feedback_and_fast,
     feedbacks::{CrashFeedback, MaxMapFeedback, TimeFeedback, TimeoutFeedback, ConstFeedback},
     fuzzer::{Fuzzer, StdFuzzer},
@@ -362,16 +362,15 @@ fn fuzz(
 
 
     // Create the executor for an in-process function with one observer for edge coverage and one for the execution time
-    let mut executor = TimeoutExecutor::new(
-        InProcessExecutor::new(
+    let mut executor =
+        InProcessExecutor::with_timeout(
             &mut harness,
             tuple_list!(edges_observer, data_observer, calibration_observer, time_observer),
             &mut fuzzer,
             &mut state,
             &mut mgr,
-        )?,
-        timeout,
-    );
+            timeout
+        )?;
 
     // The order of the stages matter!
     let mut stages = tuple_list!(calibration_stage, power);
