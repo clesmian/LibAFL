@@ -35,6 +35,7 @@ libafl_cc = { path = "../../libafl_cc" }
 clap = { version = "4.0", features = ["derive"] }
 mimalloc = { version = "*", default-features = false }
 storfuzz_constants = {path = "../storfuzz_constants"}
+env_logger = "*"
 
 [lib]
 name = "storfuzz_fuzzbench_in_process"

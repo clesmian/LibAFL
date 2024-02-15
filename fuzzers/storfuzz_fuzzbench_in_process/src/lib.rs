@@ -14,6 +14,8 @@ use std::{
 };
 use std::env::{set_var, var};
 
+use env_logger;
+
 use clap::{Parser,CommandFactory};
 use libafl::{
     corpus::{Corpus, InMemoryOnDiskCorpus, OnDiskCorpus},
@@ -90,6 +92,9 @@ struct Arguments {
 #[no_mangle]
 pub extern "C" fn libafl_main() {
     let args = Arguments::parse();
+
+    env_logger::init();
+
     println!("{:#?}", args);
 
     println!(
