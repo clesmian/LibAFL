@@ -24,7 +24,7 @@ use std::net::SocketAddr;
 #[cfg(all(feature = "std", any(windows, not(feature = "fork"))))]
 use std::process::Stdio;
 #[cfg(all(unix, feature = "std", feature = "fork"))]
-use std::{fs::File, os::unix::io::AsRawFd};
+use std::{fs::File, os::unix::io::AsRawFd, time::Duration};
 
 #[cfg(all(feature = "std", any(windows, not(feature = "fork"))))]
 use libafl_bolts::os::startable_self;
@@ -95,10 +95,18 @@ where
     /// A file name to write all client output to
     #[builder(default = None)]
     stdout_file: Option<&'a str>,
+    /// The actual, opened, stdout_file - so that we keep it open until the end
+    #[cfg(all(unix, feature = "std", feature = "fork"))]
+    #[builder(setter(skip), default = None)]
+    opened_stdout_file: Option<File>,
     /// A file name to write all client stderr output to. If not specified, output is sent to
     /// `stdout_file`.
     #[builder(default = None)]
     stderr_file: Option<&'a str>,
+    /// The actual, opened, stdout_file - so that we keep it open until the end
+    #[cfg(all(unix, feature = "std", feature = "fork"))]
+    #[builder(setter(skip), default = None)]
+    opened_stderr_file: Option<File>,
     /// The `ip:port` address of another broker to connect our new broker to for multi-machine
     /// clusters.
     #[builder(default = None)]
@@ -166,12 +174,10 @@ where
 
         log::info!("spawning on cores: {:?}", self.cores);
 
-        #[cfg(feature = "std")]
-        let stdout_file = self
+        self.opened_stdout_file = self
             .stdout_file
             .map(|filename| File::create(filename).unwrap());
-        #[cfg(feature = "std")]
-        let stderr_file = self
+        self.opened_stderr_file = self
             .stderr_file
             .map(|filename| File::create(filename).unwrap());
 
@@ -204,9 +210,9 @@ where
 
                         #[cfg(feature = "std")]
                         if !debug_output {
-                            if let Some(file) = stdout_file {
+                            if let Some(file) = &self.opened_stdout_file {
                                 dup2(file.as_raw_fd(), libc::STDOUT_FILENO)?;
-                                if let Some(stderr) = stderr_file {
+                                if let Some(stderr) = &self.opened_stderr_file {
                                     dup2(stderr.as_raw_fd(), libc::STDERR_FILENO)?;
                                 } else {
                                     dup2(file.as_raw_fd(), libc::STDERR_FILENO)?;
@@ -423,12 +429,21 @@ where
     /// A file name to write all client output to
     #[builder(default = None)]
     stdout_file: Option<&'a str>,
+    /// The actual, opened, stdout_file - so that we keep it open until the end
+    #[cfg(all(unix, feature = "std", feature = "fork"))]
+    #[builder(setter(skip), default = None)]
+    opened_stdout_file: Option<File>,
     /// A file name to write all client stderr output to. If not specified, output is sent to
     /// `stdout_file`.
     #[builder(default = None)]
     stderr_file: Option<&'a str>,
+    /// The actual, opened, stdout_file - so that we keep it open until the end
+    #[cfg(all(unix, feature = "std", feature = "fork"))]
+    #[builder(setter(skip), default = None)]
+    opened_stderr_file: Option<File>,
     /// The `ip:port` address of another broker to connect our new broker to for multi-machine
     /// clusters.
+
     #[builder(default = None)]
     remote_broker_addr: Option<SocketAddr>,
     /// If this launcher should spawn a new `broker` on `[Self::broker_port]` (default).
@@ -481,10 +496,9 @@ where
     S: State + HasExecutions,
     SP: ShMemProvider + 'static,
 {
-    /// Launch the broker and the clients and fuzz
     #[allow(clippy::similar_names)]
     #[allow(clippy::too_many_lines)]
-    pub fn launch(&mut self) -> Result<(), Error> {
+    fn launch_internal(&mut self, client_timeout: Option<Duration>) -> Result<(), Error> {
         if self.cores.ids.is_empty() {
             return Err(Error::illegal_argument(
                 "No cores to spawn on given, cannot launch anything.",
@@ -503,10 +517,10 @@ where
 
         log::info!("spawning on cores: {:?}", self.cores);
 
-        let stdout_file = self
+        self.opened_stdout_file = self
             .stdout_file
             .map(|filename| File::create(filename).unwrap());
-        let stderr_file = self
+        self.opened_stderr_file = self
             .stderr_file
             .map(|filename| File::create(filename).unwrap());
 
@@ -529,6 +543,7 @@ where
                     CentralizedLlmpEventBroker::on_port(
                         self.shmem_provider.clone(),
                         self.centralized_broker_port,
+                        client_timeout,
                     )?;
                 broker.broker_loop()?;
             }
@@ -556,9 +571,9 @@ where
                         std::thread::sleep(std::time::Duration::from_millis(index * 10));
 
                         if !debug_output {
-                            if let Some(file) = stdout_file {
+                            if let Some(file) = &self.opened_stdout_file {
                                 dup2(file.as_raw_fd(), libc::STDOUT_FILENO)?;
-                                if let Some(stderr) = stderr_file {
+                                if let Some(stderr) = &self.opened_stderr_file {
                                     dup2(stderr.as_raw_fd(), libc::STDERR_FILENO)?;
                                 } else {
                                     dup2(file.as_raw_fd(), libc::STDERR_FILENO)?;
@@ -627,5 +642,15 @@ where
         }
 
         Ok(())
+    }
+
+    /// Launch the broker and the clients and fuzz
+    pub fn launch(&mut self) -> Result<(), Error> {
+        self.launch_internal(None)
+    }
+
+    /// Launch the broker and the clients and fuzz with a given timeout for the clients
+    pub fn launch_with_client_timeout(&mut self, client_timeout: Duration) -> Result<(), Error> {
+        self.launch_internal(Some(client_timeout))
     }
 }

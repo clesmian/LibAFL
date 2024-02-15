@@ -45,7 +45,7 @@ fn find_llvm_config_brew() -> Result<PathBuf, String> {
                 return Err("Empty return from brew --cellar".to_string());
             }
             let location_suffix = "*/bin/llvm-config";
-            let cellar_glob = vec![
+            let cellar_glob = [
                 // location for explicitly versioned brew formulae
                 format!("{brew_cellar_location}/llvm@*/{location_suffix}"),
                 // location for current release brew formulae
@@ -314,7 +314,7 @@ pub const LIBAFL_CC_LLVM_VERSION: Option<usize> = None;
     cxxflags.push(String::from("-Wall"));
 
     let edges_map_size: usize = option_env!("LIBAFL_EDGES_MAP_SIZE")
-        .map_or(Ok(65536), str::parse)
+        .map_or(Ok(2_621_440), str::parse)
         .expect("Could not parse LIBAFL_EDGES_MAP_SIZE");
     if !edges_map_size.is_power_of_two(){
         panic!("LIBAFL_EDGES_MAP_SIZE must be a power of two")
@@ -331,7 +331,7 @@ pub const LIBAFL_CC_LLVM_VERSION: Option<usize> = None;
     }
 
     let acc_map_size: usize = option_env!("LIBAFL_ACCOUNTING_MAP_SIZE")
-        .map_or(Ok(65536), str::parse)
+        .map_or(Ok(65_536), str::parse)
         .expect("Could not parse LIBAFL_ACCOUNTING_MAP_SIZE");
     cxxflags.push(format!("-DLIBAFL_ACCOUNTING_MAP_SIZE={acc_map_size}"));
 
@@ -427,7 +427,6 @@ pub const LIBAFL_CC_LLVM_VERSION: Option<usize> = None;
         "autotokens-pass.cc",
         "coverage-accounting-pass.cc",
         "cmplog-instructions-pass.cc",
-        "cmplog-switches-pass.cc",
     ] {
         build_pass(
             bindir_path,

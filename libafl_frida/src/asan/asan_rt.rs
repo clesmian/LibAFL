@@ -10,7 +10,12 @@ use core::{
     fmt::{self, Debug, Formatter},
     ptr::addr_of_mut,
 };
-use std::{ffi::c_void, num::NonZeroUsize, ptr::write_volatile, rc::Rc};
+use std::{
+    ffi::c_void,
+    num::NonZeroUsize,
+    ptr::{addr_of, write_volatile},
+    rc::Rc,
+};
 
 use backtrace::Backtrace;
 use dynasmrt::{dynasm, DynasmApi, DynasmLabelApi};
@@ -20,18 +25,18 @@ use frida_gum::instruction_writer::X86Register;
 use frida_gum::instruction_writer::{Aarch64Register, IndexMode};
 use frida_gum::{
     instruction_writer::InstructionWriter, interceptor::Interceptor, stalker::StalkerOutput, Gum,
-    Module, ModuleDetails, ModuleMap, NativePointer, RangeDetails,
+    Module, ModuleDetails, ModuleMap, NativePointer, PageProtection, RangeDetails,
 };
 use frida_gum_sys::Insn;
 use hashbrown::HashMap;
 use libafl_bolts::{cli::FuzzerOptions, AsSlice};
-#[cfg(unix)]
-use libc::RLIMIT_STACK;
+// #[cfg(target_vendor = "apple")]
+// use libc::RLIMIT_STACK;
 use libc::{c_char, wchar_t};
-#[cfg(target_vendor = "apple")]
-use libc::{getrlimit, rlimit};
-#[cfg(all(unix, not(target_vendor = "apple")))]
-use libc::{getrlimit64, rlimit64};
+// #[cfg(target_vendor = "apple")]
+// use libc::{getrlimit, rlimit};
+// #[cfg(all(unix, not(target_vendor = "apple")))]
+// use libc::{getrlimit64, rlimit64};
 use nix::sys::mman::{mmap, MapFlags, ProtFlags};
 use rangemap::RangeMap;
 #[cfg(target_arch = "aarch64")]
@@ -63,10 +68,10 @@ extern "C" {
     fn tls_ptr() -> *const c_void;
 }
 
-#[cfg(target_vendor = "apple")]
-const ANONYMOUS_FLAG: MapFlags = MapFlags::MAP_ANON;
-#[cfg(not(target_vendor = "apple"))]
-const ANONYMOUS_FLAG: MapFlags = MapFlags::MAP_ANONYMOUS;
+// #[cfg(target_vendor = "apple")]
+// const ANONYMOUS_FLAG: MapFlags = MapFlags::MAP_ANON;
+// #[cfg(not(target_vendor = "apple"))]
+// const ANONYMOUS_FLAG: MapFlags = MapFlags::MAP_ANONYMOUS;
 
 /// The count of registers that need to be saved by the asan runtime
 /// sixteen general purpose registers are put in this order, rax, rbx, rcx, rdx, rbp, rsp, rsi, rdi, r8-r15, plus instrumented rip, accessed memory addr and true rip
@@ -338,7 +343,7 @@ impl AsanRuntime {
     /// Returns the `AsanErrors` from the recent run
     #[allow(clippy::unused_self)]
     pub fn errors(&mut self) -> &Option<AsanErrors> {
-        unsafe { &ASAN_ERRORS }
+        unsafe { &*addr_of!(ASAN_ERRORS) }
     }
 
     /// Make sure the specified memory is unpoisoned
@@ -403,29 +408,57 @@ impl AsanRuntime {
     }
 
     /// Get the maximum stack size for the current stack
-    #[must_use]
-    #[cfg(target_vendor = "apple")]
-    fn max_stack_size() -> usize {
-        let mut stack_rlimit = rlimit {
-            rlim_cur: 0,
-            rlim_max: 0,
-        };
-        assert!(unsafe { getrlimit(RLIMIT_STACK, addr_of_mut!(stack_rlimit)) } == 0);
+    // #[must_use]
+    // #[cfg(target_vendor = "apple")]
+    // fn max_stack_size() -> usize {
+    //     let mut stack_rlimit = rlimit {
+    //         rlim_cur: 0,
+    //         rlim_max: 0,
+    //     };
+    //     assert!(unsafe { getrlimit(RLIMIT_STACK, addr_of_mut!(stack_rlimit)) } == 0);
 
-        stack_rlimit.rlim_cur as usize
-    }
+    //     stack_rlimit.rlim_cur as usize
+    // }
 
     /// Get the maximum stack size for the current stack
-    #[must_use]
-    #[cfg(all(unix, not(target_vendor = "apple")))]
-    fn max_stack_size() -> usize {
-        let mut stack_rlimit = rlimit64 {
-            rlim_cur: 0,
-            rlim_max: 0,
-        };
-        assert!(unsafe { getrlimit64(RLIMIT_STACK, addr_of_mut!(stack_rlimit)) } == 0);
+    // #[must_use]
+    // #[cfg(all(unix, not(target_vendor = "apple")))]
+    // fn max_stack_size() -> usize {
+    //     let mut stack_rlimit = rlimit64 {
+    //         rlim_cur: 0,
+    //         rlim_max: 0,
+    //     };
+    //     assert!(unsafe { getrlimit64(RLIMIT_STACK, addr_of_mut!(stack_rlimit)) } == 0);
 
-        stack_rlimit.rlim_cur as usize
+    //     stack_rlimit.rlim_cur as usize
+    // }
+
+    /// Get the start and end of the memory region containing the given address
+    /// Uses `RangeDetails::enumerate_with_prot` as `RangeDetails::with_address` has
+    /// a [bug](https://github.com/frida/frida-rust/issues/120)
+    /// Returns (start, end)
+    fn range_for_address(address: usize) -> (usize, usize) {
+        let mut start = 0;
+        let mut end = 0;
+        RangeDetails::enumerate_with_prot(PageProtection::NoAccess, &mut |range: &RangeDetails| {
+            let range_start = range.memory_range().base_address().0 as usize;
+            let range_end = range_start + range.memory_range().size();
+            if range_start <= address && range_end >= address {
+                start = range_start;
+                end = range_end;
+                // I want to stop iteration here
+                return false;
+            }
+            true
+        });
+
+        if start == 0 {
+            log::error!(
+                "range_for_address: no range found for address {:#x}",
+                address
+            );
+        }
+        (start, end)
     }
 
     /// Determine the stack start, end for the currently running thread
@@ -436,35 +469,37 @@ impl AsanRuntime {
     pub fn current_stack() -> (usize, usize) {
         let mut stack_var = 0xeadbeef;
         let stack_address = addr_of_mut!(stack_var) as usize;
-        let range_details = RangeDetails::with_address(stack_address as u64).unwrap();
+        // let range_details = RangeDetails::with_address(stack_address as u64).unwrap();
         // Write something to (hopefully) make sure the val isn't optimized out
         unsafe {
             write_volatile(&mut stack_var, 0xfadbeef);
         }
 
-        let start = range_details.memory_range().base_address().0 as usize;
-        let end = start + range_details.memory_range().size();
+        // let start = range_details.memory_range().base_address().0 as usize;
+        // let end = start + range_details.memory_range().size();
+        // (start, end)
+        Self::range_for_address(stack_address)
 
-        let max_start = end - Self::max_stack_size();
+        // let max_start = end - Self::max_stack_size();
 
-        let flags = ANONYMOUS_FLAG | MapFlags::MAP_FIXED | MapFlags::MAP_PRIVATE;
-        #[cfg(not(target_vendor = "apple"))]
-        let flags = flags | MapFlags::MAP_STACK;
+        // let flags = ANONYMOUS_FLAG | MapFlags::MAP_FIXED | MapFlags::MAP_PRIVATE;
+        // #[cfg(not(target_vendor = "apple"))]
+        // let flags = flags | MapFlags::MAP_STACK;
 
-        if start != max_start {
-            let mapping = unsafe {
-                mmap(
-                    NonZeroUsize::new(max_start),
-                    NonZeroUsize::new(start - max_start).unwrap(),
-                    ProtFlags::PROT_READ | ProtFlags::PROT_WRITE,
-                    flags,
-                    -1,
-                    0,
-                )
-            };
-            assert!(mapping.unwrap() as usize == max_start);
-        }
-        (max_start, end)
+        // if start != max_start {
+        //     let mapping = unsafe {
+        //         mmap(
+        //             NonZeroUsize::new(max_start),
+        //             NonZeroUsize::new(start - max_start).unwrap(),
+        //             ProtFlags::PROT_READ | ProtFlags::PROT_WRITE,
+        //             flags,
+        //             -1,
+        //             0,
+        //         )
+        //     };
+        //     assert!(mapping.unwrap() as usize == max_start);
+        // }
+        // (max_start, end)
     }
 
     /// Determine the tls start, end for the currently running thread
@@ -477,10 +512,13 @@ impl AsanRuntime {
         // Strip off the top byte, as scudo allocates buffers with top-byte set to 0xb4
         let tls_address = tls_address & 0xffffffffffffff;
 
-        let range_details = RangeDetails::with_address(tls_address as u64).unwrap();
-        let start = range_details.memory_range().base_address().0 as usize;
-        let end = start + range_details.memory_range().size();
-        (start, end)
+        // let range_details = RangeDetails::with_address(tls_address as u64).unwrap();
+        // log::info!("tls address: {:#x}, range_details {:x} size {:x}", tls_address,
+        //     range_details.memory_range().base_address().0 as usize, range_details.memory_range().size());
+        // let start = range_details.memory_range().base_address().0 as usize;
+        // let end = start + range_details.memory_range().size();
+        // (start, end)
+        Self::range_for_address(tls_address)
     }
 
     /// Gets the current instruction pointer
@@ -509,6 +547,7 @@ impl AsanRuntime {
         macro_rules! hook_func {
             ($lib:expr, $name:ident, ($($param:ident : $param_type:ty),*), $return_type:ty) => {
                 paste::paste! {
+                    log::trace!("Hooking {}", stringify!($name));
                     extern "C" {
                         fn $name($($param: $param_type),*) -> $return_type;
                     }
@@ -574,6 +613,7 @@ impl AsanRuntime {
         hook_func!(None, malloc_usable_size, (ptr: *mut c_void), usize);
 
         for libname in ["libc++.so", "libc++.so.1", "libc++_shared.so"] {
+            log::info!("Hooking c++ functions in {}", libname);
             for export in Module::enumerate_exports(libname) {
                 match &export.name[..] {
                     "_Znam" => {
@@ -710,7 +750,7 @@ impl AsanRuntime {
                 }
             }
         }
-
+        log::info!("Hooking libc functions");
         hook_func!(
             None,
             mmap,
@@ -926,10 +966,14 @@ impl AsanRuntime {
         for operand_idx in 0..operand_count {
             let operand = insn.operand(operand_idx);
             if operand.is_memory() {
+                // The order is like in Intel, not AT&T
+                // So a memory read looks like
+                //      mov    edx,DWORD PTR [rax+0x14]
+                // not  mov    0x14(%rax),%edx
                 access_type = if operand_idx == 0 {
-                    Some(AccessType::Read)
-                } else {
                     Some(AccessType::Write)
+                } else {
+                    Some(AccessType::Read)
                 };
                 if let Some((basereg, indexreg, _, disp)) = operand_details(&operand) {
                     regs = Some((basereg, indexreg, disp));
@@ -1053,6 +1097,10 @@ impl AsanRuntime {
             )));
         }
 
+        // log::info!("ASAN Error, attach the debugger!");
+        // // Sleep for 1 minute to give the user time to attach a debugger
+        // std::thread::sleep(std::time::Duration::from_secs(60));
+
         // self.dump_registers();
     }
 
@@ -1085,7 +1133,7 @@ impl AsanRuntime {
             .operands
             .iter()
             .position(|item| *item == Operand::Nothing)
-            .unwrap_or_else(|| 4);
+            .unwrap_or(4);
 
         //the memory operand is always the last operand in aarch64
         let (base_reg, index_reg, displacement) = match insn.operands[operands_len - 1] {
@@ -1116,7 +1164,7 @@ impl AsanRuntime {
                     actual_pc,
                     (
                         Some(base_reg),
-                        Some(index_reg.unwrap_or_else(|| 0xffff)),
+                        Some(index_reg.unwrap_or(0xffff)),
                         displacement as usize,
                         fault_address,
                     ),
@@ -1128,7 +1176,7 @@ impl AsanRuntime {
                     actual_pc,
                     (
                         Some(base_reg),
-                        Some(index_reg.unwrap_or_else(|| 0xffff)),
+                        Some(index_reg.unwrap_or(0xffff)),
                         displacement as usize,
                         fault_address,
                     ),
@@ -1144,7 +1192,7 @@ impl AsanRuntime {
                 pc: actual_pc,
                 fault: (
                     Some(base_reg),
-                    Some(index_reg.unwrap_or_else(|| 0xffff)),
+                    Some(index_reg.unwrap_or(0xffff)),
                     displacement as usize,
                     fault_address,
                 ),
@@ -1168,7 +1216,7 @@ impl AsanRuntime {
                 actual_pc,
                 (
                     Some(base_reg),
-                    Some(index_reg.unwrap_or_else(|| 0xffff)),
+                    Some(index_reg.unwrap_or(0xffff)),
                     displacement as usize,
                     fault_address,
                 ),
@@ -1356,6 +1404,8 @@ impl AsanRuntime {
     #[allow(clippy::unused_self, clippy::identity_op)]
     #[allow(clippy::too_many_lines)]
     fn generate_shadow_check_function(&mut self) {
+        use std::fs::File;
+
         let shadow_bit = self.allocator.shadow_bit();
         let mut ops = dynasmrt::VecAssembler::<dynasmrt::x64::X64Relocation>::new(0);
 
@@ -1478,12 +1528,12 @@ impl AsanRuntime {
             );
         let blob = ops.finalize().unwrap();
         unsafe {
-            let mapping = mmap(
+            let mapping = mmap::<File>(
                 None,
-                std::num::NonZeroUsize::new_unchecked(0x1000),
+                NonZeroUsize::new_unchecked(0x1000),
                 ProtFlags::all(),
                 MapFlags::MAP_ANON | MapFlags::MAP_PRIVATE,
-                -1,
+                None,
                 0,
             )
             .unwrap();
@@ -1497,6 +1547,8 @@ impl AsanRuntime {
     // identity_op appears to be a false positive in ubfx
     #[allow(clippy::unused_self, clippy::identity_op, clippy::too_many_lines)]
     fn generate_shadow_check_function(&mut self) {
+        use std::fs::File;
+
         let shadow_bit = self.allocator.shadow_bit();
         let mut ops = dynasmrt::VecAssembler::<dynasmrt::aarch64::Aarch64Relocation>::new(0);
         dynasm!(ops
@@ -1610,12 +1662,12 @@ impl AsanRuntime {
         let map_flags = MapFlags::MAP_ANON | MapFlags::MAP_PRIVATE;
 
         unsafe {
-            let mapping = mmap(
+            let mapping = mmap::<File>(
                 None,
                 NonZeroUsize::try_from(0x1000).unwrap(),
                 ProtFlags::all(),
                 map_flags,
-                -1,
+                None,
                 0,
             )
             .unwrap();
@@ -1890,7 +1942,7 @@ impl AsanRuntime {
             ;->accessed_address:
             ; .dword 0x0
             ; self_addr:
-            ; .qword self as *mut _  as *mut c_void as i64
+            ; .qword core::ptr::from_mut(self)  as *mut c_void as i64
             ; self_regs_addr:
             ; .qword addr_of_mut!(self.regs) as i64
             ; trap_func:
@@ -2127,6 +2179,7 @@ impl AsanRuntime {
     #[cfg(target_arch = "aarch64")]
     #[must_use]
     #[inline]
+    #[allow(clippy::similar_names, clippy::type_complexity)]
     pub fn asan_is_interesting_instruction(
         decoder: InstDecoder,
         _address: u64,
@@ -2170,7 +2223,7 @@ impl AsanRuntime {
             .operands
             .iter()
             .position(|item| *item == Operand::Nothing)
-            .unwrap_or_else(|| 4);
+            .unwrap_or(4);
         if operands_len < 2 {
             return None;
         }
@@ -2189,6 +2242,7 @@ impl AsanRuntime {
 
         // println!("{:?} {}", instr, memory_access_size);
         //abuse the fact that the last operand is always the mem operand
+        #[allow(clippy::let_and_return)]
         match instr.operands[operands_len - 1] {
             Operand::RegRegOffset(reg1, reg2, size, shift, shift_size) => {
                 let ret = Some((
@@ -2199,27 +2253,25 @@ impl AsanRuntime {
                     Some((shift, shift_size)),
                 ));
                 // log::trace!("Interesting instruction: {}, {:?}", instr.to_string(), ret);
-                return ret;
+                ret
             }
             Operand::RegPreIndex(reg, disp, _) => {
                 let ret = Some((reg, None, disp, instruction_width(&instr), None));
                 // log::trace!("Interesting instruction: {}, {:?}", instr.to_string(), ret);
-                return ret;
+                ret
             }
             Operand::RegPostIndex(reg, _) => {
                 //in post index the disp is applied after so it doesn't matter for this memory access
                 let ret = Some((reg, None, 0, instruction_width(&instr), None));
                 // log::trace!("Interesting instruction: {}, {:?}", instr.to_string(), ret);
-                return ret;
+                ret
             }
             Operand::RegPostIndexReg(reg, _) => {
                 let ret = Some((reg, None, 0, instruction_width(&instr), None));
                 //  log::trace!("Interesting instruction: {}, {:?}", instr.to_string(), ret);
-                return ret;
+                ret
             }
-            _ => {
-                return None;
-            }
+            _ => None,
         }
     }
 
@@ -2549,9 +2601,9 @@ impl AsanRuntime {
                     _ => -1,
                 };
                 let (shift_encoding, shift_amount): (i32, u32) = match shift_type {
-                    ShiftStyle::LSL => (0b00, amount as u32),
-                    ShiftStyle::LSR => (0b01, amount as u32),
-                    ShiftStyle::ASR => (0b10, amount as u32),
+                    ShiftStyle::LSL => (0b00, u32::from(amount)),
+                    ShiftStyle::LSR => (0b01, u32::from(amount)),
+                    ShiftStyle::ASR => (0b10, u32::from(amount)),
                     _ => (-1, 0),
                 };
 

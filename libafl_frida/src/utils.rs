@@ -2,8 +2,6 @@
 use frida_gum::instruction_writer::Aarch64Register;
 #[cfg(target_arch = "x86_64")]
 use frida_gum::instruction_writer::X86Register;
-#[cfg(target_arch = "x86_64")]
-use frida_gum_sys;
 #[cfg(target_arch = "aarch64")]
 use num_traits::cast::FromPrimitive;
 #[cfg(target_arch = "x86_64")]
@@ -85,11 +83,11 @@ pub fn instruction_width(instr: &Instruction) -> u32 {
         Operand::SIMDRegisterGroup(sizecode, _, _, num) => {
             ////This is used for cases such as ld4 {v1.2s, v2.2s, v3.2s, v4.2s}, [x0].
             //the sizecode is the size of each simd structure (This can only be D or Q), num is the number of them (i.e. ld4 would be 4)
-            get_simd_size(*sizecode) * *num as u32
+            get_simd_size(*sizecode) * u32::from(*num)
         }
         Operand::SIMDRegisterGroupLane(_, sizecode, num, _) => {
             //This is used for cases such as ld4 {v0.s, v1.s, v2.s, v3.s}[0], [x0]. In this case sizecode is the size of each lane, num is the number of them
-            get_simd_size(*sizecode) * *num as u32
+            get_simd_size(*sizecode) * u32::from(*num)
         }
         _ => {
             return 0;
@@ -106,10 +104,10 @@ pub fn writer_register(reg: u16, sizecode: SizeCode, zr: bool) -> Aarch64Registe
     //yaxpeax and arm both make it so that depending on the opcode reg=31 can be EITHER SP or XZR.
     match (reg, sizecode, zr) {
         (0..=28, SizeCode::X, _) => {
-            Aarch64Register::from_u32(Aarch64Register::X0 as u32 + reg as u32).unwrap()
+            Aarch64Register::from_u32(Aarch64Register::X0 as u32 + u32::from(reg)).unwrap()
         }
         (0..=30, SizeCode::W, _) => {
-            Aarch64Register::from_u32(Aarch64Register::W0 as u32 + reg as u32).unwrap()
+            Aarch64Register::from_u32(Aarch64Register::W0 as u32 + u32::from(reg)).unwrap()
         }
         (29, SizeCode::X, _) => Aarch64Register::Fp,
         (30, SizeCode::X, _) => Aarch64Register::Lr,
@@ -122,7 +120,7 @@ pub fn writer_register(reg: u16, sizecode: SizeCode, zr: bool) -> Aarch64Registe
 }
 
 /// Translate from `RegSpec` to `X86Register`
-#[cfg(all(target_arch = "x86_64", unix))]
+#[cfg(target_arch = "x86_64")]
 const X86_64_REGS: [(RegSpec, X86Register); 34] = [
     (RegSpec::eax(), X86Register::Eax),
     (RegSpec::ecx(), X86Register::Ecx),
@@ -162,7 +160,8 @@ const X86_64_REGS: [(RegSpec, X86Register); 34] = [
 
 /// The writer registers
 /// frida registers: <https://docs.rs/frida-gum/0.4.0/frida_gum/instruction_writer/enum.X86Register.html>
-#[cfg(all(target_arch = "x86_64", unix))]
+/// capstone registers: <https://docs.rs/capstone-sys/0.14.0/capstone_sys/x86_reg/index.html>
+#[cfg(target_arch = "x86_64")]
 #[must_use]
 #[inline]
 #[allow(clippy::unused_self)]
@@ -177,7 +176,7 @@ pub fn writer_register(reg: RegSpec) -> X86Register {
 }
 
 /// Translates a frida instruction to a disassembled instruction.
-#[cfg(target_arch = "x86_64")]
+#[cfg(all(target_arch = "x86_64", unix))]
 pub(crate) fn frida_to_cs(decoder: InstDecoder, frida_insn: &frida_gum_sys::Insn) -> Instruction {
     decoder.decode_slice(frida_insn.bytes()).unwrap()
 }
@@ -258,10 +257,8 @@ pub fn disas_count(decoder: &InstDecoder, data: &[u8], count: usize) -> Vec<Inst
 
 #[cfg(target_arch = "aarch64")]
 /// Disassemble "count" number of instructions
-pub fn disas_count(decoder: &InstDecoder, data: &[u8], count: usize) -> Vec<Instruction> {
-    let _counter = count;
+pub fn disas_count(decoder: &InstDecoder, data: &[u8], _count: usize) -> Vec<Instruction> {
     let mut ret = vec![];
-    let _start = 0;
 
     let mut reader = ReaderBuilder::<u64, u8>::read_from(data);
 

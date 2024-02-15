@@ -148,6 +148,18 @@ pub trait Corpus: UsesInput + Serialize + for<'de> Deserialize<'de> {
     }
 }
 
+/// Trait for types which track the current corpus index
+pub trait HasCurrentCorpusIdx {
+    /// Set the current corpus index; we have started processing this corpus entry
+    fn set_corpus_idx(&mut self, idx: CorpusId) -> Result<(), Error>;
+
+    /// Clear the current corpus index; we are done with this entry
+    fn clear_corpus_idx(&mut self) -> Result<(), Error>;
+
+    /// Fetch the current corpus index -- typically used after a state recovery or transfer
+    fn current_corpus_idx(&self) -> Result<Option<CorpusId>, Error>;
+}
+
 /// [`Iterator`] over the ids of a [`Corpus`]
 #[derive(Debug)]
 pub struct CorpusIdIterator<'a, C>
@@ -349,21 +361,23 @@ pub mod pybind {
         fn get(&self, idx: CorpusId) -> Result<&RefCell<Testcase<BytesInput>>, Error> {
             let ptr = unwrap_me!(self.wrapper, c, {
                 c.get(idx)
-                    .map(|v| v as *const RefCell<Testcase<BytesInput>>)
+                    .map(core::ptr::from_ref::<RefCell<Testcase<BytesInput>>>)
             })?;
             Ok(unsafe { ptr.as_ref().unwrap() })
         }
 
         #[inline]
         fn current(&self) -> &Option<CorpusId> {
-            let ptr = unwrap_me!(self.wrapper, c, { c.current() as *const Option<CorpusId> });
+            let ptr = unwrap_me!(self.wrapper, c, {
+                core::ptr::from_ref::<Option<CorpusId>>(c.current())
+            });
             unsafe { ptr.as_ref().unwrap() }
         }
 
         #[inline]
         fn current_mut(&mut self) -> &mut Option<CorpusId> {
             let ptr = unwrap_me_mut!(self.wrapper, c, {
-                c.current_mut() as *mut Option<CorpusId>
+                core::ptr::from_mut::<Option<CorpusId>>(c.current_mut())
             });
             unsafe { ptr.as_mut().unwrap() }
         }
