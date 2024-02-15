@@ -57,7 +57,6 @@ use libafl_targets::__storfuzz_introspect;
 use nix::{self, unistd::dup};
 
 use storfuzz_constants::DEFAULT_ASAN_OPTIONS;
-use libafl::corpus::{CorpusMinimizer, StdCorpusMinimizer};
 
 #[derive(Parser)]
 #[derive(Debug)]
@@ -86,8 +85,6 @@ struct Arguments {
     tokenfile: Option<PathBuf>,
     #[arg(value_name = "SECONDS",long, short='l', default_value_t = 1, help = "Time in seconds between log entries, 0 signals no wait time")]
     secs_between_log_msgs: u64,
-    #[arg(long, default_value_t = false, help = "Minify corpus instead of starting a fuzzing campaign")]
-    cmin: bool,
     #[arg()]
     remaining: Option<Vec<String>>
 }
@@ -160,21 +157,7 @@ pub extern "C" fn libafl_main() {
 
     let secs_between_log_msgs = Duration::from_secs(args.secs_between_log_msgs);
 
-    fuzz(out_dir,
-         crashes,
-         &in_dir,
-         args.tokenfile,
-         log,
-         secs_between_log_msgs,
-         stats_file,
-         timeout,
-         args.timeouts_are_solutions,
-         args.disregard_data,
-         args.disregard_edges,
-         args.fast_disregard,
-         args.store_queue_metadata,
-         args.cmin
-    )
+    fuzz(out_dir, crashes, &in_dir, args.tokenfile, log, secs_between_log_msgs, stats_file, timeout, args.timeouts_are_solutions, args.disregard_data, args.disregard_edges, args.fast_disregard, args.store_queue_metadata)
         .expect("An error occurred while fuzzing");
 }
 
@@ -216,8 +199,7 @@ fn fuzz(
     disregard_data: bool,
     disregard_edges: bool,
     fast_disregard: bool,
-    store_queue_metadata: bool,
-    cmin: bool
+    store_queue_metadata: bool
 ) -> Result<(), Error> {
 
     let mut stdout_cpy = unsafe {
@@ -284,8 +266,6 @@ fn fuzz(
                                                      unsafe {
                                                          vec!{edges_map_mut_slice(), storfuzz_map_mut_slice()}
                                                      });
-
-    let minimizer = StdCorpusMinimizer::new(&calibration_observer);
 
     // Create an observation channel to keep track of the execution time
     let time_observer = TimeObserver::new("time");
@@ -437,17 +417,7 @@ fn fuzz(
         log.replace(OpenOptions::new().append(true).create(true).open(logfile.unwrap())?);
     }
 
-    if cmin{
-        let orig_size = state.corpus().count();
-
-        minimizer.minimize(&mut fuzzer, &mut executor, &mut mgr, &mut state)
-            .expect("Failed to minimize corpus");
-
-        println!("Minimized corpus from {} to {} test cases ({}%)",
-                 orig_size, state.corpus().count(), 100f64*((state.corpus().count() as f64)/orig_size as f64));
-    } else {
-        fuzzer.fuzz_loop(&mut stages, &mut executor, &mut state, &mut mgr)?;
-    }
+    fuzzer.fuzz_loop(&mut stages, &mut executor, &mut state, &mut mgr)?;
 
     // Never reached
     Ok(())
