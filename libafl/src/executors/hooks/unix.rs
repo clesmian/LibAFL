@@ -183,6 +183,14 @@ pub mod unix_signal_handler {
         E::State: HasExecutions + HasSolutions + HasCorpus,
         Z: HasObjective<Objective = OF, State = E::State>,
     {
+        #[cfg(feature = "safe_alloc_for_inprocess")]
+        {
+            extern "C" {
+                fn allocator_switch_to_safe_mode();
+            }
+            allocator_switch_to_safe_mode();
+        }
+
         #[cfg(all(target_os = "android", target_arch = "aarch64"))]
         let _context = _context.map(|p| {
             &mut *(((p as *mut _ as *mut libc::c_void as usize) + 128) as *mut libc::c_void
@@ -200,6 +208,8 @@ pub mod unix_signal_handler {
 
             log::error!("Child crashed!");
 
+            // Disabled with merge of main on 24-12-15, reenable if crashes occur
+            // #[cfg(not(feature = "safe_alloc_for_inprocess"))]
             {
                 let mut bsod = Vec::new();
                 {
@@ -237,6 +247,8 @@ pub mod unix_signal_handler {
                     "We crashed at addr 0x{si_addr:x}, but are not in the target... Bug in the fuzzer? Exiting."
                 );
 
+                // Disabled with merge of main on 24-12-15, reenable if crashes occur
+                // #[cfg(not(feature = "safe_alloc_for_inprocess"))]
                 {
                     let mut bsod = Vec::new();
                     {
