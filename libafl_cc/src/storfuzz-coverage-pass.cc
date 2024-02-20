@@ -463,7 +463,7 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
       bool only_one_store = false;
 
       bool instrument_this_time = false;
-      // Pass over each block twice and only instrument it when it has fewer then <THRESHOLD> stores
+      // Pass over each block twice and only instrument it when it has fewer than <THRESHOLD> stores
       do { // while (!instrument_this_time)
         // If we have found stores already we're in the second pass. The THRESHOLD has been checked in the first iteration
         if (BB_store_count > 0){
@@ -536,7 +536,7 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
                   } else {
                     break;
                   }
-                };
+                }
                 if(skip)
                   continue;
 
