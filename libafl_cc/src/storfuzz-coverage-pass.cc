@@ -300,6 +300,30 @@ class StorFuzzCoverage : public ModulePass {
     value->printAsOperand(OS, printType, M);
     return OS.str();
   }
+
+  // Returns the given value, if it does not have to be uncasted
+  Value* uncast(Value* value, bool emit_log=false){
+    assert(value != nullptr);
+    CastInst* castInstruction = nullptr;
+    Value* uncastedValue = value;
+
+    // As long as the uncasted value is a CastInst, we can uncast it
+    while((castInstruction = dyn_cast<CastInst>(uncastedValue))){
+      // Get the value before the cast
+      uncastedValue = castInstruction->getOperand(0);
+
+      if (emit_log) {
+        std::string        msg;
+        raw_string_ostream msg_stream(msg);
+
+        msg_stream << "\"" << *uncastedValue << "\" | \""
+                   << *castInstruction << "\"";
+        log("UNCASTED", msg);
+      }
+    }
+
+    return uncastedValue;
+  }
 };
 
 }  // namespace
@@ -512,36 +536,10 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
 
                 // Try to get the value before the cast, if the stored value
                 // does not stem from an instruction it is not interesting
-                Instruction* actual_valueDefInstruction = valueDefInstruction;
-                Value* actual_storedValue = storedValue;
-                bool skip = false;
-                while (!skip) {
-                  if (!(actual_valueDefInstruction =
-                            dyn_cast<Instruction>(actual_storedValue))){
-                    skip = true;
-                    break;
-                  } else if (actual_valueDefInstruction->isCast()) {
-                    Instruction *castInstruction;
-                    assert((castInstruction =
-                                dyn_cast<CastInst>(actual_valueDefInstruction)));
-
-                    // Get the value before the cast
-                    actual_storedValue =
-                        castInstruction->getOperand(0);
-
-                    if (!instrument_this_time) {
-                      std::string        msg;
-                      raw_string_ostream msg_stream(msg);
-
-                      msg_stream << "\"" << *actual_storedValue << "\" | \""
-                                 << *castInstruction << "\"";
-                      log("UNCASTED", msg);
-                    }
-                  } else {
-                    break;
-                  }
-                }
-                if(skip)
+                Instruction* actual_valueDefInstruction;
+                Value* actual_storedValue = uncast(storedValue, !instrument_this_time);
+                if (!(actual_valueDefInstruction =
+                          dyn_cast<Instruction>(actual_storedValue)))
                   continue;
 
                 // Skip direct copies (modulo truncation/extension)
