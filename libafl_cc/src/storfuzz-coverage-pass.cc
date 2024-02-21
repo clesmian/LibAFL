@@ -652,11 +652,15 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
                   if(isa<CallInst,InvokeInst>(actual_valueDefInstruction)){
                     CallBase* callInst = cast<CallBase>(actual_valueDefInstruction);
 
+                    StringRef funcName = "";
+                    if(callInst->getCalledFunction() && callInst->getCalledFunction()->hasName()) {
+                      funcName = callInst->getCalledFunction()->getName();
+                    }
                     msg_stream << "\""
                                << actual_valueDefInstruction->getOpcodeName()
                                << "\" | \"";
-                    if(callInst->getCalledFunction() && callInst->getCalledFunction()->hasName()){
-                      msg_stream << callInst->getCalledFunction()->getName();
+                    if(!funcName.empty()){
+                      msg_stream << funcName;
                     } else {
                       msg_stream << *callInst;
                     }
