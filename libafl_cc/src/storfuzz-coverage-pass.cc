@@ -483,9 +483,6 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
           BB_store_count = 0;
         }
 
-        // Ensure we only log stuff once
-        bool log_this_time = !instrument_this_time;
-
         for (auto &instr : BB) {
           StoreInst *storeInst;
           if ((storeInst = dyn_cast<StoreInst>(&instr))) {
@@ -530,7 +527,7 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
                     actual_storedValue =
                         castInstruction->getOperand(0);
 
-                    if (log_this_time) {
+                    if (!instrument_this_time) {
                       std::string        msg;
                       raw_string_ostream msg_stream(msg);
 
@@ -547,7 +544,7 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
 
                 // Skip direct copies (modulo truncation/extension)
                 if (isa<LoadInst, VAArgInst>(actual_valueDefInstruction)){
-                  if(log_this_time) {
+                  if(!instrument_this_time) {
                     std::string        msg;
                     raw_string_ostream msg_stream(msg);
 
@@ -601,7 +598,7 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
                   if(is_loop_ctr) {
                     // FIXME: This detection is not complete!
                     // We miss many loop counters
-                    if (log_this_time) {
+                    if (!instrument_this_time) {
                       std::string        msg;
                       raw_string_ostream msg_stream(msg);
 
@@ -627,7 +624,7 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
                   // Include a message in the output, if the type of the value
                   // before casting is fundamentally different from the type
                   // after casting
-                  if(((bool) actual_storedType) ^ ((bool) storedType) && log_this_time){
+                  if(((bool) actual_storedType) ^ ((bool) storedType) && !instrument_this_time){
                     std::string        msg;
                     raw_string_ostream msg_stream(msg);
 
@@ -645,7 +642,7 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
                 }
 
 
-                if(log_this_time) {
+                if(!instrument_this_time) {
                   std::string        msg;
                   raw_string_ostream msg_stream(msg);
 
@@ -688,7 +685,7 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
 #ifdef USE_NEW_PM
                 // Some logging of known value ranges
                 auto valRange = LVI->getConstantRange(storedValue, storeInst, true);
-                if(log_this_time){
+                if(!instrument_this_time){
                   std::string msg;
                   raw_string_ostream msg_stream(msg);
 
