@@ -545,6 +545,7 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
                 if(skip)
                   continue;
 
+                // Skip direct copies (modulo truncation/extension)
                 if (isa<LoadInst, VAArgInst>(actual_valueDefInstruction)){
                   if(log_this_time) {
                     std::string        msg;
@@ -561,6 +562,7 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
                   }
                   continue;
                 } else if(isSmallConstantAdditionOrSubtraction(actual_valueDefInstruction)){
+                  // Skip loop_ctrs
                   bool is_loop_ctr = false;
 #ifdef USE_NEW_PM
                   auto loop = LoopInfo->getLoopFor(actual_valueDefInstruction->getParent());
