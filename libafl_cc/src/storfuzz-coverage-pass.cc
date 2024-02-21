@@ -324,6 +324,57 @@ class StorFuzzCoverage : public ModulePass {
 
     return uncastedValue;
   }
+
+  bool isLoopCtr(LoopInfo* loopInfo, Value* potentialLoopCtr, Value* potentialLoopCtrLocation){
+    // FIXME: This detection is not complete!
+    // We miss many loop counters
+    if(loopInfo == nullptr){
+      errs() << "WARNING: This analysis requires the result of LoopAnalysis\n";
+      return false;
+    }
+    Value* actualDef = uncast(potentialLoopCtr);
+    Instruction* actualDefInst = dyn_cast<Instruction>(actualDef);
+
+    bool is_loop_ctr = false;
+    if(actualDefInst && isSmallConstantAdditionOrSubtraction(actualDefInst, 8)){
+      // Skip loop_ctrs
+      // If the potentialLoopCtr, its uncasted value or the store location of the potentialLoopCtr
+      // are part of a latch cmp instruction in any loop
+      // containing the respective basic block, we have discovered a loop counter
+      auto loop = loopInfo->getLoopFor(actualDefInst->getParent());
+
+      while(loop && !is_loop_ctr){
+        auto cmp_instr = loop->getLatchCmpInst();
+        if (cmp_instr){
+          for(auto val: cmp_instr->operand_values()){
+            // Easy case
+            if (val == actualDef ||
+                val == potentialLoopCtr ||
+                val == potentialLoopCtrLocation) {
+              is_loop_ctr = true;
+            }
+
+            // Allow for one level of indirection
+            if(isa<Instruction>(val)){
+              // We can cast directly due to the check above
+              for(auto indirect_val : cast<Instruction>(val)->operand_values()) {
+                if (indirect_val == actualDef ||
+                    indirect_val == potentialLoopCtr ||
+                    indirect_val == potentialLoopCtrLocation) {
+                  is_loop_ctr = true;
+                  break;
+                }
+              }
+            }
+          }
+        }
+
+        loop = loop->getParentLoop();
+      }
+    }
+    return is_loop_ctr;
+  }
+
 };
 
 }  // namespace
@@ -558,46 +609,7 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
                     log("SKIPPED", msg);
                   }
                   continue;
-                } else if(isSmallConstantAdditionOrSubtraction(actual_valueDefInstruction)){
-                  // Skip loop_ctrs
-                  bool is_loop_ctr = false;
-#ifdef USE_NEW_PM
-                  auto loop = LoopInfo->getLoopFor(actual_valueDefInstruction->getParent());
-
-                  while(loop && !is_loop_ctr){
-                    auto cmp_instr = loop->getLatchCmpInst();
-                    if (cmp_instr){
-                      for(auto val: cmp_instr->operand_values()){
-                        if(isa<Instruction>(val)){
-                          // Easy case
-                          if (val == actual_storedValue ||
-                              val == storeLocation ||
-                              val == storedValue) {
-                            is_loop_ctr = true;
-                          }
-                          // Allow for one level of indirection
-                          for(auto indirect_val : cast<Instruction>(val)->operand_values()) {
-                            if (indirect_val == actual_storedValue ||
-                                indirect_val == storeLocation ||
-                                indirect_val == storedValue) {
-                              is_loop_ctr = true;
-                              break;
-                            }
-                          }
-                          if(is_loop_ctr)
-                            break;
-                        }
-
-                      }
-                    }
-
-                    loop = loop->getParentLoop();
-                  }
-
-
-                  if(is_loop_ctr) {
-                    // FIXME: This detection is not complete!
-                    // We miss many loop counters
+                } else if(isLoopCtr(LoopInfo, storedValue, storeLocation)){
                     if (!instrument_this_time) {
                       std::string        msg;
                       raw_string_ostream msg_stream(msg);
@@ -614,8 +626,6 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
                       log("SKIPPED_LOOP_CTR", msg);
                     }
                     continue;
-                  }
-#endif
                 }
 
                 // If the type we started casting from, was not an integer, we don't want it
