@@ -227,7 +227,7 @@ class StorFuzzCoverage : public ModulePass {
       // Only find those that subtract a small constant rather than those
       // that subtract FROM a small constant
       if (isa<ConstantInt>(instr->getOperand(1)) &&
-            (cast<ConstantInt>(instr->getOperand(1))->getValue().abs().ule(smallConstant))) {
+            (cast<ConstantInt>(instr->getOperand(1))->getValue().abs().ule(smallConstant)))
           return true;
     }
     return false;
