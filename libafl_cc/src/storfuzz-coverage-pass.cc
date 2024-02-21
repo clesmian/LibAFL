@@ -609,6 +609,22 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
                     log("SKIPPED", msg);
                   }
                   continue;
+                } else if(isSmallConstantAdditionOrSubtraction(actual_valueDefInstruction, 1)){
+                  // Skip increments/decrements by 1
+                  if(!instrument_this_time) {
+                    std::string        msg;
+                    raw_string_ostream msg_stream(msg);
+
+                    msg_stream << "\"" << actual_valueDefInstruction->getOpcodeName() << "\" | \"" <<
+                               *actual_valueDefInstruction << "\" | \"";
+                    if (valueDefInstruction != actual_valueDefInstruction){
+                      msg_stream << *valueDefInstruction;
+                    }
+                    msg_stream << "\"";
+
+                    log("SKIPPED_SMALL_SUBADD", msg);
+                  }
+                  continue;
                 } else if(isLoopCtr(LoopInfo, storedValue, storeLocation)){
                     if (!instrument_this_time) {
                       std::string        msg;
