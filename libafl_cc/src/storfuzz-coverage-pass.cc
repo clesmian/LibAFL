@@ -216,14 +216,19 @@ class StorFuzzCoverage : public ModulePass {
 
   static bool isSmallConstantAdditionOrSubtraction(Instruction* instr,
                                                    uint64_t smallConstant = 2){
-    if(instr->getOpcode() == Instruction::Add ||
-        instr->getOpcode() == Instruction::Sub) {
+    if(instr->getOpcode() == Instruction::Add) {
       for (auto op : instr->operand_values()) {
         if (isa<ConstantInt>(op) &&
             (cast<ConstantInt>(op)->getValue().abs().ule(smallConstant))) {
           return true;
         }
       }
+    } else if (instr->getOpcode() == Instruction::Sub) {
+      // Only find those that subtract a small constant rather than those
+      // that subtract FROM a small constant
+      if (isa<ConstantInt>(instr->getOperand(1)) &&
+            (cast<ConstantInt>(instr->getOperand(1))->getValue().abs().ule(smallConstant))) {
+          return true;
     }
     return false;
   }
