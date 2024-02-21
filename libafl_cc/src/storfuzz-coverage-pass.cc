@@ -576,11 +576,11 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
               Instruction *valueDefInstruction;
               // If the stored value does not stem from an instruction it is not
               // interesting
-              // Ensure valueDefInstruction is exactly the SSA Value stored by storeInst
               if (!(valueDefInstruction =
                         dyn_cast<Instruction>(storedValue)))
                 continue;
 
+              // We are only interested in stores of integer typed values
               IntegerType *storedType;
               if ((storedType =
                        dyn_cast<IntegerType>(storedValue->getType()))) {
