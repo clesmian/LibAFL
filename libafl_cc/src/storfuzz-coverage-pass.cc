@@ -348,7 +348,7 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
     return true;
 #endif
   }
-
+  // DO SETUP
   LLVMContext &C = M.getContext();
 
   Type *VoidTy = Type::getVoidTy(C);
@@ -362,6 +362,29 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
   Type        *Int32PtrTy = PointerType::getUnqual(IntegerType::getInt32Ty(C));
   Type        *Int64PtrTy = PointerType::getUnqual(IntegerType::getInt64Ty(C));
   Type *Int128PtrTy = PointerType::getUnqual(IntegerType::getInt128Ty(C));
+
+  Type          *argTypes[] = {Int32Ty, Int8Ty, Int64Ty};
+  FunctionType  *coverageFuncType = FunctionType::get(VoidTy, argTypes, false);
+  FunctionCallee coverageFunc =
+      M.getOrInsertFunction("__storfuzz_record_value", coverageFuncType);
+
+  Type          *aggregate_argTypes[] = {Int8Ty, Int64Ty};
+  FunctionType  *aggregate_FuncType = FunctionType::get(VoidTy, aggregate_argTypes, false);
+  FunctionCallee aggregate_func =
+      M.getOrInsertFunction("__storfuzz_aggregate_value", aggregate_FuncType);
+
+  Type          *store_aggregated_argTypes[] = {Int16Ty, Int8Ty};
+  FunctionType  *store_aggregated_FuncType = FunctionType::get(VoidTy, store_aggregated_argTypes, false);
+  FunctionCallee store_aggregated_Func =
+      M.getOrInsertFunction("__storfuzz_store_aggregated_value", store_aggregated_FuncType);
+
+
+  // Useful for BBs with only one store
+  // __storfuzz_store_single_aggregated_value(uint16_t bb_id, uint8_t bitmask, uint64_t value){
+  Type          *store_single_aggregated_argTypes[] = {Int16Ty, Int8Ty, Int64Ty};
+  FunctionType  *store_single_aggregated_FuncType = FunctionType::get(VoidTy, store_single_aggregated_argTypes, false);
+  FunctionCallee store_single_aggregated_Func =
+      M.getOrInsertFunction("__storfuzz_store_single_aggregated_value", store_single_aggregated_FuncType);
 
   uint32_t     rand_seed;
   unsigned int cur_loc = 0;
@@ -391,42 +414,21 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
       ConstantInt::get(Int8Ty, 1 << 4), ConstantInt::get(Int8Ty, 1 << 5),
       ConstantInt::get(Int8Ty, 1 << 6), ConstantInt::get(Int8Ty, 1 << 7)};
 
+    // Threshold used to determine whether a bb should be instrumented
+    auto THRESHOLD = 0;
+    if(getenv("MAX_STORES_PER_BB")) {
+      THRESHOLD = atoi(getenv("MAX_STORES_PER_BB"));
+    }
+    if(THRESHOLD <= 0){
+      THRESHOLD = 9; // Default to 9
+    }
+
+  // SETUP DONE
+
   /* Instrument all the things! */
 
   int inst_stores = 0;
-  // scanForDangerousFunctions(&M);
 
-  Type          *argTypes[] = {Int32Ty, Int8Ty, Int64Ty};
-  FunctionType  *coverageFuncType = FunctionType::get(VoidTy, argTypes, false);
-  FunctionCallee coverageFunc =
-      M.getOrInsertFunction("__storfuzz_record_value", coverageFuncType);
-
-  Type          *aggregate_argTypes[] = {Int8Ty, Int64Ty};
-  FunctionType  *aggregate_FuncType = FunctionType::get(VoidTy, aggregate_argTypes, false);
-  FunctionCallee aggregate_func =
-      M.getOrInsertFunction("__storfuzz_aggregate_value", aggregate_FuncType);
-
-  Type          *store_aggregated_argTypes[] = {Int16Ty, Int8Ty};
-  FunctionType  *store_aggregated_FuncType = FunctionType::get(VoidTy, store_aggregated_argTypes, false);
-  FunctionCallee store_aggregated_Func =
-      M.getOrInsertFunction("__storfuzz_store_aggregated_value", store_aggregated_FuncType);
-
-
-  // Useful for BBs with only one store
-  // __storfuzz_store_single_aggregated_value(uint16_t bb_id, uint8_t bitmask, uint64_t value){
-  Type          *store_single_aggregated_argTypes[] = {Int16Ty, Int8Ty, Int64Ty};
-  FunctionType  *store_single_aggregated_FuncType = FunctionType::get(VoidTy, store_single_aggregated_argTypes, false);
-  FunctionCallee store_single_aggregated_Func =
-      M.getOrInsertFunction("__storfuzz_store_single_aggregated_value", store_single_aggregated_FuncType);
-
-  // Threshold used to determine whether a bb should be instrumented
-  auto THRESHOLD = 0;
-  if(getenv("MAX_STORES_PER_BB")) {
-    THRESHOLD = atoi(getenv("MAX_STORES_PER_BB"));
-  }
-  if(THRESHOLD <= 0){
-    THRESHOLD = 9; // Default to 9
-  }
 
 
   for (auto &F : M) {
