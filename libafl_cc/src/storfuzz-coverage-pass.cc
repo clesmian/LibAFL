@@ -531,33 +531,74 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
     auto *LoopInfo = &FAM.getResult<LoopAnalysis>(F);
 
 #endif
+    // The number of potentially interesting stores in a function may be
+    // different from the number of instrumented stores due to the
+    // MAX_STORES_PER_BB threshold
+    auto potentially_interesting_stores_in_func = 0;
+    auto instrumented_stores_in_func = 0;
 
-    for (auto &BB : F) {
-      BasicBlock::iterator insertionPoint = BB.getFirstInsertionPt();
-      IRBuilder<>          IRB(&(*insertionPoint));
+    SmallDenseMap<BasicBlock *,uint16_t> stores_per_bb(8);
 
-      uint16_t BB_store_count = 0;
+    // Pass over each block twice and only instrument it when it has fewer than <THRESHOLD> stores
+    for(int pass = 0 ; pass < 2 ; pass++) {
+      bool instrument_this_time = (pass == 1);
+      
+      if(instrument_this_time){
+        if(stores_per_bb.empty()){
+          errs() << "ERROR: Could not find info on any BB in '" << M.getName() << ": "
+                 << F.getName()  << "\n";
+          break;
+        }
+        for( auto &pair : stores_per_bb){
+          potentially_interesting_stores_in_func += pair.getSecond();
+          if(pair.getSecond() <= THRESHOLD)
+            instrumented_stores_in_func += pair.getSecond();
+        }
+        // Only logs number of potentially interesting stores (excludes skipped)
+        std::string        msg;
+        raw_string_ostream msg_stream(msg);
 
-      // Needed only for ONE_INSTRUMENTATION_PER_BB
-      Value   *BB_id;
-      BB_id = ConstantInt::get(Int16Ty, (uint16_t) RandBelow(map_size));
-      uint32_t BB_bitmask_selector = RandBelow(8);
-      bool only_one_store = false;
+        msg_stream << "\"" << M.getName() << "\" | \""
+                   << F.getName() << "\" | " << potentially_interesting_stores_in_func << " (" << instrumented_stores_in_func << ")";
+        log("STORES_IN_FUNC", msg);
+      }
 
-      bool instrument_this_time = false;
-      // Pass over each block twice and only instrument it when it has fewer than <THRESHOLD> stores
-      do { // while (!instrument_this_time)
-        // If we have found stores already we're in the second pass. The THRESHOLD has been checked in the first iteration
-        if (BB_store_count > 0){
-          instrument_this_time = true;
 
-          // We can maybe optimize a bit more
-          if(BB_store_count == 1){
-            only_one_store = true;
+
+
+      for (auto &BB : F) {
+        BasicBlock::iterator insertionPoint = BB.getFirstInsertionPt();
+        IRBuilder<>          IRB(&(*insertionPoint));
+
+        uint16_t BB_store_count = 0;
+
+        // Needed only for ONE_INSTRUMENTATION_PER_BB
+        Value   *BB_id;
+        BB_id = ConstantInt::get(Int16Ty, (uint16_t) RandBelow(map_size));
+        uint32_t BB_bitmask_selector = RandBelow(8);
+        bool only_one_store = false;
+
+        if(instrument_this_time){
+          auto stores_in_this_bb = 0;
+          if(stores_per_bb.count(&BB) != 0) {
+            stores_in_this_bb = stores_per_bb.find(&BB)->getSecond();
+          } else {
+            errs() << "ERROR: Could not find info on '" << M.getName() << ": "
+                   << F.getName() << ": " << BB.getName() << "\n";
           }
 
-          // Reset for reuse as counter
-          BB_store_count = 0;
+          // Bail out if there are no stores to instrument in the current basic block
+          if(stores_in_this_bb == 0){
+            continue;
+          }
+          // Bail out if there are too many stores in this BB
+          if (stores_in_this_bb > THRESHOLD){
+            dbgs() << "DEBUG: Not instrumenting '" << M.getName() << ": " << F.getName() << ": " << BB.getName() <<
+                   "' because it has more than " << itostr(THRESHOLD) << " stores\n";
+            continue;
+          }
+          // We can maybe optimize a bit more
+          only_one_store = (stores_in_this_bb == 1);
         }
 
         for (auto &instr : BB) {
@@ -600,7 +641,7 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
                     raw_string_ostream msg_stream(msg);
 
                     msg_stream << "\"" << actual_valueDefInstruction->getOpcodeName() << "\" | \"" <<
-                        *actual_valueDefInstruction << "\" | \"";
+                               *actual_valueDefInstruction << "\" | \"";
                     if (valueDefInstruction != actual_valueDefInstruction){
                       msg_stream << *valueDefInstruction;
                     }
@@ -655,7 +696,7 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
                     raw_string_ostream msg_stream(msg);
 
                     msg_stream << "\"" << *actual_storedValue->getType() << "\" | \"" <<
-                        *storedValue->getType() << "\"";
+                               *storedValue->getType() << "\"";
                     log("TYPE_DISAGREEMENT", msg);
                   }
                   continue;
@@ -719,14 +760,14 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
                              << *storeLocation << " (" << printNameOrAsOperandInRelease(storeLocation, &M, true) << ")\" | \""
                              << *storedValue << "\" | \""
                              << valRange << "\" | \""
-                  // Some info on the value type and range
+                             // Some info on the value type and range
                              << *storedType <<
-                      (LVI->getConstant(storedValue, storeInst) != nullptr ? " constant":
-                             valRange.isWrappedSet() ? " wrapped":
-                             valRange.isSignWrappedSet() ? " sign_wrapped" :
-                             valRange.isUpperWrapped() ? " upper_wrapped":
-                             valRange.isUpperSignWrapped() ? " upper_sign_wrapped" :
-                                                         "") << "\" | ";
+                             (LVI->getConstant(storedValue, storeInst) != nullptr ? " constant":
+                              valRange.isWrappedSet() ? " wrapped":
+                              valRange.isSignWrappedSet() ? " sign_wrapped" :
+                              valRange.isUpperWrapped() ? " upper_wrapped":
+                              valRange.isUpperSignWrapped() ? " upper_sign_wrapped" :
+                              "") << "\" | ";
 
                   if(valRange.isFullSet()){
                     msg_stream << storedType->getBitMask();
@@ -984,46 +1025,41 @@ bool StorFuzzCoverage::runOnModule(Module &M) {
           }             // if instr is store
         }               // Iter instructions in BB
 
-        // Bail out if there are no stores to instrument in the current basic block
-        if(BB_store_count == 0){
-          break;
+
+        if(instrument_this_time && getenv("ONE_INSTRUMENTATION_PER_BB") && !only_one_store) {
+          // Store aggregated value to map
+          if (BB_store_count > 0) {
+            Value       *args[] = {BB_id, Mask[BB_bitmask_selector]};
+            Instruction *call_to_store_aggregated =
+                IRB.CreateCall(store_aggregated_Func, args);
+            call_to_store_aggregated->setMetadata(M.getMDKindID("nosanitize"),
+                                                  MDNode::get(C, None));
+          }  // if at least one store was done in BB
+        } // instrument_this_time && ONE_INSTRUMENTATION_PER_BB && !only_one_store
+
+        // Don't skew statistics if we didn't instrument anything
+        if(!instrument_this_time){
+          if(stores_per_bb.count(&BB) != 0) {
+            errs() << "ERROR: BB already in stores_per_bb map " << M.getName()
+                   << ": " << F.getName() << ": " << BB.getName() << "\n";
+          }
+          stores_per_bb.insert(std::pair(&BB, BB_store_count));
+
+          BB_store_count = 0;
+        } else {
+          inst_stores += BB_store_count;
         }
-        // Bail out if there are too many stores to instrument
-        if (BB_store_count > THRESHOLD){
-          dbgs() << "DEBUG: Not instrumenting '" << M.getName() << ": " << F.getName() << ": " << BB.getName() <<
-              "' because it has more than " << itostr(THRESHOLD) << " stores\n";
-          break;
-        }
-
-      } while (!instrument_this_time);
-
-      if(instrument_this_time && getenv("ONE_INSTRUMENTATION_PER_BB") && !only_one_store) {
-        // Store aggregated value to map
-        if (BB_store_count > 0) {
-          Value       *args[] = {BB_id, Mask[BB_bitmask_selector]};
-          Instruction *call_to_store_aggregated =
-              IRB.CreateCall(store_aggregated_Func, args);
-          call_to_store_aggregated->setMetadata(M.getMDKindID("nosanitize"),
-                                                MDNode::get(C, None));
-        }  // if at least one store was done in BB
-      } // instrument_this_time && ONE_INSTRUMENTATION_PER_BB && !only_one_store
-
-      // Don't skew statistics if we didn't instrument anything
-      if(!instrument_this_time){
-        BB_store_count = 0;
-      }
 
       auto I = BB.getFirstNonPHIOrDbg(true);
       auto line_num = I->getDebugLoc() ? std::to_string(I->getDebugLoc().getLine()) : "?";
 
-      std::string msg = M.getName().str() + ":" + F.getName().str() + ":" + BB.getName().str()
-                        + " line: " + line_num
-                        + " | " + std::to_string(BB_store_count);
+        std::string msg = M.getName().str() + ":" + F.getName().str() + ":" + BB.getName().str()
+                          + " line: " + line_num
+                          + " | " + std::to_string(BB_store_count);
 
-      log("STORES_PER_BB", msg);
-
-      inst_stores += BB_store_count;
-    } // Iter BBs in Func
+        log("STORES_PER_BB", msg);
+      } // Iter BBs in Func
+    } // Pass over each block twice
   } // Iter Funcs in Module
 
   outs() << "StorFuzz on '" << M.getName() << "': Instrumented " <<  inst_stores << " targets\n";
