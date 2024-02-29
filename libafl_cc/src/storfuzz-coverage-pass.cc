@@ -61,7 +61,7 @@ std::ofstream *logFile = nullptr;
 static void log(std::string prefix,std::string msg,bool multiline_msg = false){
   if(logToFile){
     logToFile = getenv("STORFUZZ_LOG_TO_FILE") != nullptr;
-    if(__glibc_unlikely(!logToFile)){
+    if(__glibc_unlikely(!logToFile || msg.empty())){
       return;
     }
 
