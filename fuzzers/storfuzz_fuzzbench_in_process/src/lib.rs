@@ -17,12 +17,20 @@ use std::env::{set_var, var};
 use env_logger;
 
 use clap::{Parser,CommandFactory};
+use log::LevelFilter;
 use libafl::{
     corpus::{Corpus, InMemoryOnDiskCorpus, OnDiskCorpus},
     events::SimpleRestartingEventManager,
     executors::{inprocess::InProcessExecutor, ExitKind},
     feedback_or, feedback_and_fast,
-    feedbacks::{CrashFeedback, MaxMapFeedback, TimeFeedback, TimeoutFeedback, ConstFeedback},
+    feedbacks::{
+        CrashFeedback,
+        MaxMapFeedback,
+        TimeFeedback,
+        TimeoutFeedback,
+        ConstFeedback,
+        custom::CustomFeedback
+    },
     fuzzer::{Fuzzer, StdFuzzer},
     inputs::{BytesInput, HasTargetBytes},
     monitors::{SimpleMonitor, OnDiskTOMLMonitor},
@@ -84,9 +92,15 @@ struct Arguments {
     tokenfile: Option<PathBuf>,
     #[arg(value_name = "SECONDS",long, short='l', default_value_t = 1, help = "Time in seconds between log entries, 0 signals no wait time")]
     secs_between_log_msgs: u64,
+    #[arg(value_name = "SECONDS",long, default_value_t = 3600 * 2, help = "Time in seconds to run the full coverage, repeats periodically after only edge coverage is run")]
+    time_to_run_full_coverage: u64,
+    #[arg(value_name = "SECONDS",long, default_value_t = 3600 * 22, help = "Time in seconds to run only edge coverage, repeats periodically after full coverage is run")]
+    time_to_run_edge_coverage: u64,
     #[arg()]
     remaining: Option<Vec<String>>
 }
+
+const SWITCHER_FEEDBACK_NAME: &str = "TimeBasedDataFeedback";
 
 /// The fuzzer main (as `no_mangle` C function)
 #[no_mangle]
@@ -102,6 +116,12 @@ pub extern "C" fn libafl_main() {
             if args.debug_logfile.is_empty() {"warn"} else {"debug"}
         )
     )
+        .filter_module(SWITCHER_FEEDBACK_NAME,
+                       if args.debug_logfile.is_empty() {
+                           LevelFilter::Info
+                       } else {
+                           LevelFilter::Debug
+                       })
         .target(env_logger::Target::Pipe(Box::new(stdout_cpy)))// Use copy of stdout
         .write_style(env_logger::WriteStyle::Always)// Ensure that colors are printed
         .init();
@@ -170,7 +190,21 @@ pub extern "C" fn libafl_main() {
 
     let secs_between_log_msgs = Duration::from_secs(args.secs_between_log_msgs);
 
-    fuzz(out_dir, crashes, &in_dir, args.tokenfile, log, secs_between_log_msgs, stats_file, timeout, args.timeouts_are_solutions, args.disregard_data, args.disregard_edges, args.fast_disregard, args.store_queue_metadata)
+    fuzz(out_dir,
+         crashes,
+         &in_dir,
+         args.tokenfile,
+         log,
+         secs_between_log_msgs,
+         stats_file,
+         timeout,
+         args.timeouts_are_solutions,
+         args.disregard_data,
+         args.disregard_edges,
+         args.fast_disregard,
+         args.store_queue_metadata,
+         args.time_to_run_full_coverage,
+         args.time_to_run_edge_coverage)
         .expect("An error occurred while fuzzing");
 }
 
@@ -212,7 +246,9 @@ fn fuzz(
     disregard_data: bool,
     disregard_edges: bool,
     fast_disregard: bool,
-    store_queue_metadata: bool
+    store_queue_metadata: bool,
+    time_to_run_full_coverage: u64,
+    time_to_run_edge_coverage: u64
 ) -> Result<(), Error> {
 
     let mut stdout_cpy = unsafe {
@@ -292,14 +328,31 @@ fn fuzz(
     let calibration_feedback = AflMapFeedback::new(&calibration_observer);
     let calibration_stage = CalibrationStage::new(&calibration_feedback);
 
-    // Feedback to rate the interestingness of an input
-    // This one is composed by two Feedbacks in OR
+    let storfuzz_duration = Duration::from_secs(time_to_run_full_coverage);
+    let afl_duration = Duration::from_secs(time_to_run_edge_coverage);
+    let start_time = current_time();
+    let is_it_time_for_data_feedback = CustomFeedback::new(
+        SWITCHER_FEEDBACK_NAME, || -> bool {
+            let elapsed_time = current_time() - start_time;
+            let cycle_time = storfuzz_duration + afl_duration;
+
+            if elapsed_time.as_secs() % cycle_time.as_secs() < storfuzz_duration.as_secs(){
+                true
+            } else {
+                false
+            }
+        }
+    );
+
     let mut feedback = feedback_or!(
         feedback_and_fast!(ConstFeedback::new(!(disregard_edges && fast_disregard)),
                 feedback_and_fast!(edge_feedback, ConstFeedback::new(!disregard_edges))),
-        feedback_and_fast!(ConstFeedback::new(!(disregard_data && fast_disregard)),
-                feedback_and_fast!(data_feedback, ConstFeedback::new(!disregard_data))),
-            // Time feedback, this one does not need a feedback state
+        feedback_and_fast!(
+            is_it_time_for_data_feedback,
+            ConstFeedback::new(!(disregard_data && fast_disregard)),
+            feedback_and_fast!(data_feedback, ConstFeedback::new(!disregard_data))
+        ),
+        // Time feedback, this one does not need a feedback state
         TimeFeedback::with_observer(&time_observer)
     );
 
