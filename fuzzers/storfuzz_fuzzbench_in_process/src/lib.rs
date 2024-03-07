@@ -92,8 +92,19 @@ struct Arguments {
 #[no_mangle]
 pub extern "C" fn libafl_main() {
     let args = Arguments::parse();
+    let stdout_cpy = unsafe {
+        let new_fd = dup(io::stdout().as_raw_fd()).unwrap();
+        File::from_raw_fd(new_fd)
+    };
 
-    env_logger::init();
+    env_logger::Builder::from_env(
+        env_logger::Env::default().default_filter_or(
+            if args.debug_logfile.is_empty() {"warn"} else {"debug"}
+        )
+    )
+        .target(env_logger::Target::Pipe(Box::new(stdout_cpy)))// Use copy of stdout
+        .write_style(env_logger::WriteStyle::Always)// Ensure that colors are printed
+        .init();
 
     println!("{:#?}", args);
 
