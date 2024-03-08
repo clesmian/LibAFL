@@ -52,7 +52,16 @@ use libafl::feedbacks::AflMapFeedback;
 use libafl::observers::MultiMapObserver;
 use libafl::prelude::MapFeedbackMetadata;
 use libafl::state::HasNamedMetadata;
-use libafl_bolts::{current_nanos, current_time, os::dup, os::dup2, rands::StdRand, shmem::{ShMemProvider, StdShMemProvider}, tuples::{tuple_list, Merge}, AsSlice, Named};
+use libafl_bolts::{
+    current_nanos,
+    current_time,
+    os::{dup, dup2},
+    rands::StdRand,
+    shmem::{ShMemProvider, StdShMemProvider},
+    tuples::{tuple_list, Merge},
+    AsSlice,
+    Named,
+    SerdeAny};
 #[cfg(any(target_os = "linux", target_vendor = "apple"))]
 use libafl_targets::autotokens;
 use libafl_targets::{
@@ -64,6 +73,24 @@ use libafl_targets::{
 use libafl_targets::__storfuzz_introspect;
 
 use storfuzz_constants::DEFAULT_ASAN_OPTIONS;
+use serde::{Deserialize, Serialize};
+
+
+#[derive(Debug, Serialize, Deserialize, SerdeAny)]
+struct SerializableDuration{
+    secs: u64,
+    subsec_nanos: u32
+}
+impl Into<Duration> for &SerializableDuration{
+    fn into(self) -> Duration {
+        Duration::from_secs(self.secs) + Duration::from_nanos(self.subsec_nanos as u64)
+    }
+}
+impl Into<SerializableDuration> for Duration{
+    fn into(self) -> SerializableDuration {
+        SerializableDuration{ secs: self.as_secs(), subsec_nanos:self.subsec_nanos()}
+    }
+}
 
 #[derive(Parser)]
 #[derive(Debug)]
@@ -330,10 +357,11 @@ fn fuzz(
 
     let storfuzz_duration = Duration::from_secs(time_to_run_full_coverage);
     let afl_duration = Duration::from_secs(time_to_run_edge_coverage);
-    let start_time = current_time();
     let is_it_time_for_data_feedback = CustomFeedback::new(
-        SWITCHER_FEEDBACK_NAME, || -> bool {
-            let elapsed_time = current_time() - start_time;
+        SWITCHER_FEEDBACK_NAME, |state: &mut StdState<BytesInput, InMemoryOnDiskCorpus<BytesInput>, StdRand, OnDiskCorpus<BytesInput>>| -> bool {
+            let start_time: &SerializableDuration = state.named_metadata("time_started").unwrap();
+
+            let elapsed_time = current_time() - start_time.into();
             let cycle_time = storfuzz_duration + afl_duration;
 
             if elapsed_time.as_secs() % cycle_time.as_secs() < storfuzz_duration.as_secs(){
@@ -364,7 +392,7 @@ fn fuzz(
 
     // If not restarting, create a State from scratch
     let mut state = state.unwrap_or_else(|| {
-        StdState::new(
+        let mut temp = StdState::new(
             // RNG
             StdRand::with_seed(current_nanos()),
             // Corpus that will be evolved, we keep it in memory for performance
@@ -382,7 +410,9 @@ fn fuzz(
             // Same for objective feedbacks
             &mut objective,
         )
-        .unwrap()
+        .unwrap();
+        temp.add_named_metadata::<SerializableDuration>(current_time().into(), "time_started");
+        temp
     });
 
     println!("Let's fuzz :)");

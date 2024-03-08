@@ -37,6 +37,7 @@ mimalloc = { version = "*", default-features = false }
 storfuzz_constants = {path = "../storfuzz_constants"}
 env_logger = "*"
 log = "*"
+serde = { version = "1.0.192", features = ["derive"] }
 
 [lib]
 name = "storfuzz_fuzzbench_in_process"
