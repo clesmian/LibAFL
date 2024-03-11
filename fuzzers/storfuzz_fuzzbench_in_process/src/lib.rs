@@ -357,11 +357,13 @@ fn fuzz(
 
     let storfuzz_duration = Duration::from_secs(time_to_run_full_coverage);
     let afl_duration = Duration::from_secs(time_to_run_edge_coverage);
+    const TIME_STARTED_METADATA_NAME: &str = "time_started";
     let is_it_time_for_data_feedback = CustomFeedback::new(
         SWITCHER_FEEDBACK_NAME, |state: &mut StdState<BytesInput, InMemoryOnDiskCorpus<BytesInput>, StdRand, OnDiskCorpus<BytesInput>>| -> bool {
-            let start_time: &SerializableDuration = state.named_metadata("time_started").unwrap();
+            let start_time: Duration = state.
+                named_metadata::<SerializableDuration>(TIME_STARTED_METADATA_NAME).unwrap().into();
 
-            let elapsed_time = current_time() - start_time.into();
+            let elapsed_time = current_time() - start_time;
             let cycle_time = storfuzz_duration + afl_duration;
 
             if elapsed_time.as_secs() % cycle_time.as_secs() < storfuzz_duration.as_secs(){
@@ -411,7 +413,7 @@ fn fuzz(
             &mut objective,
         )
         .unwrap();
-        temp.add_named_metadata::<SerializableDuration>(current_time().into(), "time_started");
+        temp.add_named_metadata::<SerializableDuration>(current_time().into(), TIME_STARTED_METADATA_NAME);
         temp
     });
 
