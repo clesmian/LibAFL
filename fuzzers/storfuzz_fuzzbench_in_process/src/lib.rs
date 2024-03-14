@@ -123,6 +123,8 @@ struct Arguments {
     time_to_run_full_coverage: u64,
     #[arg(value_name = "SECONDS",long, default_value_t = 3600 * 22, help = "Time in seconds to run only edge coverage, repeats periodically after full coverage is run")]
     time_to_run_edge_coverage: u64,
+    #[arg(long, default_value_t = false, help = "Start cycle with edge coverage only. (Starts with full coverage by default)")]
+    start_with_edge_coverage: bool,
     #[arg()]
     remaining: Option<Vec<String>>
 }
@@ -231,6 +233,7 @@ pub extern "C" fn libafl_main() {
          args.fast_disregard,
          args.store_queue_metadata,
          current_time(),
+         args.start_with_edge_coverage,
          args.time_to_run_full_coverage,
          args.time_to_run_edge_coverage)
         .expect("An error occurred while fuzzing");
@@ -276,6 +279,7 @@ fn fuzz(
     fast_disregard: bool,
     store_queue_metadata: bool,
     start_time: Duration,
+    start_with_edge_coverage: bool,
     time_to_run_full_coverage: u64,
     time_to_run_edge_coverage: u64
 ) -> Result<(), Error> {
@@ -364,10 +368,18 @@ fn fuzz(
             let elapsed_time = current_time() - start_time;
             let cycle_time = storfuzz_duration + afl_duration;
 
-            if elapsed_time.as_secs() % cycle_time.as_secs() < storfuzz_duration.as_secs(){
-                true
+            if start_with_edge_coverage {
+                if elapsed_time.as_secs() % cycle_time.as_secs() < afl_duration.as_secs() {
+                    false
+                } else {
+                    true
+                }
             } else {
-                false
+                if elapsed_time.as_secs() % cycle_time.as_secs() < storfuzz_duration.as_secs() {
+                    true
+                } else {
+                    false
+                }
             }
         }
     );
