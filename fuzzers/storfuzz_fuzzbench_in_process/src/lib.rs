@@ -230,6 +230,7 @@ pub extern "C" fn libafl_main() {
          args.disregard_edges,
          args.fast_disregard,
          args.store_queue_metadata,
+         current_time(),
          args.time_to_run_full_coverage,
          args.time_to_run_edge_coverage)
         .expect("An error occurred while fuzzing");
@@ -274,6 +275,7 @@ fn fuzz(
     disregard_edges: bool,
     fast_disregard: bool,
     store_queue_metadata: bool,
+    start_time: Duration,
     time_to_run_full_coverage: u64,
     time_to_run_edge_coverage: u64
 ) -> Result<(), Error> {
@@ -357,12 +359,8 @@ fn fuzz(
 
     let storfuzz_duration = Duration::from_secs(time_to_run_full_coverage);
     let afl_duration = Duration::from_secs(time_to_run_edge_coverage);
-    const TIME_STARTED_METADATA_NAME: &str = "time_started";
     let is_it_time_for_data_feedback = CustomFeedback::new(
-        SWITCHER_FEEDBACK_NAME, |state: &mut StdState<BytesInput, InMemoryOnDiskCorpus<BytesInput>, StdRand, OnDiskCorpus<BytesInput>>| -> bool {
-            let start_time: Duration = state.
-                named_metadata::<SerializableDuration>(TIME_STARTED_METADATA_NAME).unwrap().into();
-
+        SWITCHER_FEEDBACK_NAME, |_state| -> bool {
             let elapsed_time = current_time() - start_time;
             let cycle_time = storfuzz_duration + afl_duration;
 
@@ -394,7 +392,7 @@ fn fuzz(
 
     // If not restarting, create a State from scratch
     let mut state = state.unwrap_or_else(|| {
-        let mut temp = StdState::new(
+        StdState::new(
             // RNG
             StdRand::with_seed(current_nanos()),
             // Corpus that will be evolved, we keep it in memory for performance
@@ -412,9 +410,7 @@ fn fuzz(
             // Same for objective feedbacks
             &mut objective,
         )
-        .unwrap();
-        temp.add_named_metadata::<SerializableDuration>(current_time().into(), TIME_STARTED_METADATA_NAME);
-        temp
+        .unwrap()
     });
 
     println!("Let's fuzz :)");
