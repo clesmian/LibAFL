@@ -363,23 +363,20 @@ fn fuzz(
 
     let storfuzz_duration = Duration::from_secs(time_to_run_full_coverage);
     let afl_duration = Duration::from_secs(time_to_run_edge_coverage);
+
+    let use_data_in_first_period = !start_with_edge_coverage;
+    let first_period = if start_with_edge_coverage { afl_duration } else { storfuzz_duration };
+    let second_period = if start_with_edge_coverage { storfuzz_duration } else { afl_duration };
     let is_it_time_for_data_feedback = CustomFeedback::new(
         SWITCHER_FEEDBACK_NAME, |_state| -> bool {
             let elapsed_time = current_time() - start_time;
-            let cycle_time = storfuzz_duration + afl_duration;
+            let cycle_time = first_period + second_period;
 
-            if start_with_edge_coverage {
-                if elapsed_time.as_secs() % cycle_time.as_secs() < afl_duration.as_secs() {
-                    false
-                } else {
-                    true
-                }
+
+            if elapsed_time.as_secs() % cycle_time.as_secs() < first_period.as_secs() {
+                use_data_in_first_period
             } else {
-                if elapsed_time.as_secs() % cycle_time.as_secs() < storfuzz_duration.as_secs() {
-                    true
-                } else {
-                    false
-                }
+                !use_data_in_first_period
             }
         }
     );
