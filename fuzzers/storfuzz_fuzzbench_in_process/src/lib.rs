@@ -17,7 +17,7 @@ use std::env::{set_var, var};
 use env_logger;
 
 use clap::{Parser,CommandFactory};
-use log::LevelFilter;
+use log::{LevelFilter, warn, info};
 use libafl::{
     corpus::{Corpus, InMemoryOnDiskCorpus, OnDiskCorpus},
     events::SimpleRestartingEventManager,
@@ -51,7 +51,7 @@ use libafl::{
 use libafl::feedbacks::AflMapFeedback;
 use libafl::observers::MultiMapObserver;
 use libafl::prelude::MapFeedbackMetadata;
-use libafl::state::HasNamedMetadata;
+use libafl::state::{HasExecutions, HasNamedMetadata};
 use libafl_bolts::{
     current_nanos,
     current_time,
@@ -81,6 +81,19 @@ struct SerializableDuration{
     secs: u64,
     subsec_nanos: u32
 }
+
+
+#[derive(Debug, Serialize, Deserialize, SerdeAny, Copy, Clone)]
+enum ExecutionCountBasedSwitchingPeriod { First, Second }
+
+
+const METADATA_KEY: &str = "execution_based_switching_metadata";
+#[derive(Debug, Serialize, Deserialize, SerdeAny, Copy, Clone)]
+struct ExecutionCountBasedSwitching {
+    next_switch_at: usize,
+    current_period: ExecutionCountBasedSwitchingPeriod
+}
+
 impl Into<Duration> for &SerializableDuration{
     fn into(self) -> Duration {
         Duration::from_secs(self.secs) + Duration::from_nanos(self.subsec_nanos as u64)
@@ -119,11 +132,11 @@ struct Arguments {
     tokenfile: Option<PathBuf>,
     #[arg(value_name = "SECONDS",long, short='l', default_value_t = 1, help = "Time in seconds between log entries, 0 signals no wait time")]
     secs_between_log_msgs: u64,
-    #[arg(value_name = "SECONDS",long, default_value_t = 3600 * 2, help = "Time in seconds to run the full coverage, repeats periodically after only edge coverage is run")]
-    time_to_run_full_coverage: u64,
-    #[arg(value_name = "SECONDS",long, default_value_t = 3600 * 22, help = "Time in seconds to run only edge coverage, repeats periodically after full coverage is run")]
-    time_to_run_edge_coverage: u64,
-    #[arg(long, default_value_t = false, help = "Start cycle with edge coverage only. (Starts with full coverage by default)")]
+    #[arg(value_name = "CYCLE_COUNT",long = "corpus-cycles-full", help = "How often should we run the corpus with full coverage before we switch to edge coverage")]
+    times_to_run_corpus_full_coverage: u64,
+    #[arg(value_name = "CYCLE_COUNT",long = "corpus-cycles-edge", help = "How often should we run the corpus with edge coverage before we switch to full coverage")]
+    times_to_run_corpus_edge_coverage: u64,
+    #[arg(long, default_value_t = false, help = "Start with edge coverage only. (Default: start with full coverage)")]
     start_with_edge_coverage: bool,
     #[arg()]
     remaining: Option<Vec<String>>
@@ -234,8 +247,8 @@ pub extern "C" fn libafl_main() {
          args.store_queue_metadata,
          current_time(),
          args.start_with_edge_coverage,
-         args.time_to_run_full_coverage,
-         args.time_to_run_edge_coverage)
+         args.times_to_run_corpus_full_coverage,
+         args.times_to_run_corpus_edge_coverage)
         .expect("An error occurred while fuzzing");
 }
 
@@ -280,8 +293,8 @@ fn fuzz(
     store_queue_metadata: bool,
     start_time: Duration,
     start_with_edge_coverage: bool,
-    time_to_run_full_coverage: u64,
-    time_to_run_edge_coverage: u64
+    times_to_run_corpus_full_coverage: u64,
+    times_to_run_corpus_edge_coverage: u64
 ) -> Result<(), Error> {
 
     let mut stdout_cpy = unsafe {
@@ -361,22 +374,73 @@ fn fuzz(
     let calibration_feedback = AflMapFeedback::new(&calibration_observer);
     let calibration_stage = CalibrationStage::new(&calibration_feedback);
 
-    let storfuzz_duration = Duration::from_secs(time_to_run_full_coverage);
-    let afl_duration = Duration::from_secs(time_to_run_edge_coverage);
+    let storfuzz_cycles = times_to_run_corpus_full_coverage;
+    let afl_cycles = times_to_run_corpus_edge_coverage;
 
     let use_data_in_first_period = !start_with_edge_coverage;
-    let first_period = if start_with_edge_coverage { afl_duration } else { storfuzz_duration };
-    let second_period = if start_with_edge_coverage { storfuzz_duration } else { afl_duration };
+    let first_period = if start_with_edge_coverage { afl_cycles } else { storfuzz_cycles };
+    let second_period = if start_with_edge_coverage { storfuzz_cycles } else { afl_cycles };
+
     let is_it_time_for_data_feedback = CustomFeedback::new(
-        SWITCHER_FEEDBACK_NAME, |_state| -> bool {
-            let elapsed_time = current_time() - start_time;
-            let cycle_time = first_period + second_period;
+        SWITCHER_FEEDBACK_NAME, |state: &mut StdState<BytesInput, InMemoryOnDiskCorpus<BytesInput>, StdRand, OnDiskCorpus<BytesInput>>| -> bool {
+            if state.must_load_initial_inputs(){
+                // We are not finished loading initial inputs. Return initial state
+                return use_data_in_first_period;
+            }
 
+            let meta = match state.named_metadata::<ExecutionCountBasedSwitching>(METADATA_KEY) {
+                Ok(t) => {
+                    *t
+                },
+                Err(_) => {
+                    warn!(target: SWITCHER_FEEDBACK_NAME, "Initializing metadata object in state");
+                    let new_meta = ExecutionCountBasedSwitching {
+                        next_switch_at: state.corpus().count() * first_period as usize,
+                        current_period: ExecutionCountBasedSwitchingPeriod::First
+                    };
+                    state.add_named_metadata(
+                        new_meta,
+                        METADATA_KEY
+                    );
+                    new_meta
+                }
+            };
 
-            if elapsed_time.as_secs() % cycle_time.as_secs() < first_period.as_secs() {
-                use_data_in_first_period
-            } else {
-                !use_data_in_first_period
+            return match meta.current_period {
+                ExecutionCountBasedSwitchingPeriod::First => {
+                    if *state.executions() >= meta.next_switch_at {
+                        info!(target: SWITCHER_FEEDBACK_NAME, "Switching to state {:?} at {} execs in {:?}",
+                            meta.current_period, state.executions(), current_time() - start_time);
+                        let new_meta = ExecutionCountBasedSwitching {
+                            next_switch_at: state.corpus().count() * second_period as usize + *state.executions(),
+                            current_period: ExecutionCountBasedSwitchingPeriod::Second
+                        };
+                        state.add_named_metadata(
+                            new_meta,
+                            METADATA_KEY
+                        );
+                        !use_data_in_first_period
+                    } else {
+                        use_data_in_first_period
+                    }
+                },
+                ExecutionCountBasedSwitchingPeriod::Second => {
+                    if *state.executions() >= meta.next_switch_at {
+                        info!(target: SWITCHER_FEEDBACK_NAME, "Switching to state {:?} at {} execs in {:?}",
+                            meta.current_period, state.executions(), current_time() - start_time);
+                        let new_meta = ExecutionCountBasedSwitching {
+                            next_switch_at: state.corpus().count() * first_period as usize + *state.executions(),
+                            current_period: ExecutionCountBasedSwitchingPeriod::First
+                        };
+                        state.add_named_metadata(
+                            new_meta,
+                            METADATA_KEY
+                        );
+                        use_data_in_first_period
+                    } else {
+                        !use_data_in_first_period
+                    }
+                }
             }
         }
     );
