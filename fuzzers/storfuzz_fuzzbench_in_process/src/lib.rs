@@ -133,9 +133,9 @@ struct Arguments {
     #[arg(value_name = "SECONDS",long, short='l', default_value_t = 1, help = "Time in seconds between log entries, 0 signals no wait time")]
     secs_between_log_msgs: u64,
     #[arg(value_name = "CYCLE_COUNT",long = "corpus-cycles-full", help = "How often should we run the corpus with full coverage before we switch to edge coverage")]
-    times_to_run_corpus_full_coverage: u64,
+    times_to_run_corpus_full_coverage: Option<u64>,
     #[arg(value_name = "CYCLE_COUNT",long = "corpus-cycles-edge", help = "How often should we run the corpus with edge coverage before we switch to full coverage")]
-    times_to_run_corpus_edge_coverage: u64,
+    times_to_run_corpus_edge_coverage: Option<u64>,
     #[arg(long, default_value_t = false, help = "Start with edge coverage only. (Default: start with full coverage)")]
     start_with_edge_coverage: bool,
     #[arg()]
@@ -186,6 +186,13 @@ pub extern "C" fn libafl_main() {
     if args.output_dir.is_none() || args.input_dir.is_none() {
         let mut cmd =  Arguments::command();
         cmd.print_help().expect("Failed printing help. Something must be seriously wrong!");
+        return;
+    }
+
+    if args.times_to_run_corpus_edge_coverage.is_none() || args.times_to_run_corpus_full_coverage.is_none(){
+        Arguments::command().print_help()
+            .expect("Failed printing help. Something must be seriously wrong!");
+        eprintln!("You must specify both --times-to-run-corpus-edge-coverage and --times-to-run-corpus-full-coverage to start fuzzing.");
         return;
     }
 
@@ -247,8 +254,8 @@ pub extern "C" fn libafl_main() {
          args.store_queue_metadata,
          current_time(),
          args.start_with_edge_coverage,
-         args.times_to_run_corpus_full_coverage,
-         args.times_to_run_corpus_edge_coverage)
+         args.times_to_run_corpus_full_coverage.unwrap(),
+         args.times_to_run_corpus_edge_coverage.unwrap())
         .expect("An error occurred while fuzzing");
 }
 
