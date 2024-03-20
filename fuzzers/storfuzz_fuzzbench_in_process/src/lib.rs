@@ -456,9 +456,9 @@ fn fuzz(
         feedback_and_fast!(ConstFeedback::new(!(disregard_edges && fast_disregard)),
                 feedback_and_fast!(edge_feedback, ConstFeedback::new(!disregard_edges))),
         feedback_and_fast!(
-            is_it_time_for_data_feedback,
             ConstFeedback::new(!(disregard_data && fast_disregard)),
-            feedback_and_fast!(data_feedback, ConstFeedback::new(!disregard_data))
+            feedback_and_fast!(data_feedback, ConstFeedback::new(!disregard_data)),
+            is_it_time_for_data_feedback
         ),
         // Time feedback, this one does not need a feedback state
         TimeFeedback::with_observer(&time_observer)
