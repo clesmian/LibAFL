@@ -369,6 +369,7 @@ where
 )] // for SerdeAny
 pub struct SchedulerTestcaseMetadata {
     /// Number of bits set in bitmap, updated in calibrate_case
+    // (actually it counts number of bytes in the byte-map)
     bitmap_size: u64,
     /// Number of queue cycles behind
     handicap: u64,
