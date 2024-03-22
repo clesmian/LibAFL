@@ -52,7 +52,7 @@ use libafl::{
 use libafl::feedbacks::AflMapFeedback;
 use libafl::observers::MultiMapObserver;
 use libafl::prelude::MapFeedbackMetadata;
-use libafl::state::{HasExecutions, HasNamedMetadata};
+use libafl::state::HasNamedMetadata;
 use libafl_bolts::{
     current_nanos,
     current_time,
@@ -249,7 +249,7 @@ pub extern "C" fn libafl_main() {
          stats_file,
          timeout,
          args.timeouts_are_solutions,
-         false, // args.fast_disregard, // TODO: re-enable once implemented
+         // args.fast_disregard, // TODO: re-enable once implemented
          args.store_queue_metadata,
          args.start_with_edge_coverage,
          args.improvement_time,
@@ -292,7 +292,7 @@ fn fuzz(
     stats_file: PathBuf,
     timeout: Duration,
     timeouts_are_solutions: bool,
-    fast_disregard: bool,
+    // fast_disregard: bool, // TODO: re-enable once implemented
     store_queue_metadata: bool,
     start_with_edge_coverage: bool,
     improvement_time: u64,
