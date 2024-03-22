@@ -318,6 +318,8 @@ where
 {
     /// Contains information about untouched entries
     pub history_map: Vec<T>,
+    /// Set entries in history map
+    pub set_entries: u64,
 }
 
 libafl_bolts::impl_serdeany!(
@@ -334,6 +336,7 @@ where
     pub fn new(map_size: usize) -> Self {
         Self {
             history_map: vec![T::default(); map_size],
+            set_entries: 0,
         }
     }
 
@@ -341,7 +344,7 @@ where
     /// The map can be shared.
     #[must_use]
     pub fn with_history_map(history_map: Vec<T>) -> Self {
-        Self { history_map }
+        Self { history_map, set_entries: 0 }
     }
 
     /// Reset the map
@@ -350,6 +353,7 @@ where
         for i in 0..cnt {
             self.history_map[i] = T::default();
         }
+        self.set_entries = 0;
         Ok(())
     }
 
@@ -359,6 +363,7 @@ where
         for i in 0..cnt {
             self.history_map[i] = value;
         }
+        self.set_entries = 0;
         Ok(())
     }
 }
@@ -850,6 +855,8 @@ where
                 let filled_bytes = history_map.iter().filter(|&&i| i != initial).count();
                 filled = self.novelties.as_ref().map_or(filled_bytes,|novelties| filled_bytes + novelties.len()) as u64;
             }
+            map_state.set_entries = filled;
+
             // opt: if not tracking optimisations, we technically don't show the *current* history
             // map but the *last* history map; this is better than walking over and allocating
             // unnecessarily
