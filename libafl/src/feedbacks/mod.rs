@@ -833,14 +833,16 @@ where
         }
     }
 
-    fn append_metadata<OT>(
+    fn append_metadata<EM, OT>(
         &mut self,
-        _: &mut S,
-        _: &OT,
+        _state: &mut S,
+        _manager: &mut EM,
+        _observers: &OT,
         testcase: &mut Testcase<S::Input>,
     ) -> Result<(), Error>
         where
             OT: ObserversTuple<S>,
+            EM: EventFirer<State = S>,
     {
         if self.is_crash {
             testcase.add_metadata(SolutionType{solution_type: "Crash".parse().unwrap() });
@@ -906,14 +908,16 @@ where
         }
     }
 
-    fn append_metadata<OT>(
+    fn append_metadata<EM, OT>(
         &mut self,
-        _: &mut S,
-        _: &OT,
+        _state: &mut S,
+        _manager: &mut EM,
+        _observers: &OT,
         testcase: &mut Testcase<S::Input>,
     ) -> Result<(), Error>
         where
             OT: ObserversTuple<S>,
+            EM: EventFirer<State = S>,
     {
         if self.is_timeout {
             testcase.add_metadata(SolutionType{solution_type: "Timeout".parse().unwrap() });
