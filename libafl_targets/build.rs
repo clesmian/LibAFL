@@ -6,8 +6,17 @@ const ONE_MB: usize = 1 << 20;
 const SIXTY_FOUR_KB: usize = 65_536;
 const ONE_TWENTY_EIGHT_KB: usize = SIXTY_FOUR_KB * 2;
 
+#[rustversion::nightly]
+fn enable_nightly() {
+    println!("cargo:rustc-cfg=nightly");
+}
+
+#[rustversion::not(nightly)]
+fn enable_nightly() {}
+
 #[allow(clippy::too_many_lines)]
 fn main() {
+    enable_nightly();
     let out_dir = env::var_os("OUT_DIR").unwrap();
     let out_dir = out_dir.to_string_lossy().to_string();
     //let out_dir_path = Path::new(&out_dir);
@@ -232,7 +241,7 @@ fn main() {
             .header("src/sanitizer_interfaces.h")
             .use_core()
             .generate_comments(true)
-            .parse_callbacks(Box::new(bindgen::CargoCallbacks))
+            .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
             .generate()
             .expect("Couldn't generate the sanitizer headers!");
 

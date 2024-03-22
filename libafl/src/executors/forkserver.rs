@@ -7,6 +7,7 @@ use core::{
     time::Duration,
 };
 use std::{
+    env,
     ffi::{OsStr, OsString},
     io::{self, prelude::*, ErrorKind},
     os::{
@@ -293,6 +294,14 @@ impl Forkserver {
         kill_signal: Signal,
         current_dir: Option<OsString>
     ) -> Result<Self, Error> {
+        if env::var("AFL_MAP_SIZE").is_err() {
+            log::warn!("AFL_MAP_SIZE not set. If it is unset, the forkserver may fail to start up");
+        }
+
+        if env::var("__AFL_SHM_ID").is_err() {
+            log::warn!("__AFL_SHM_ID not set. It is necessary to set this env, otherwise the forkserver cannot communicate with the fuzzer");
+        }
+
         let mut st_pipe = Pipe::new().unwrap();
         let mut ctl_pipe = Pipe::new().unwrap();
 
@@ -451,10 +460,10 @@ impl Forkserver {
     pub fn read_st_timed(&mut self, timeout: &TimeSpec) -> Result<Option<i32>, Error> {
         let mut buf: [u8; 4] = [0_u8; 4];
         let Some(st_read) = self.st_pipe.read_end() else {
-            return Err(Error::file(io::Error::new(
-                ErrorKind::BrokenPipe,
-                "Read pipe end was already closed",
-            )));
+            return Err(Error::os_error(
+                io::Error::new(ErrorKind::BrokenPipe, "Read pipe end was already closed"),
+                "read_st_timed failed",
+            ));
         };
 
         // # Safety

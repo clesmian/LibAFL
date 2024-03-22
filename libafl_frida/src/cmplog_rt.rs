@@ -14,7 +14,7 @@ use libafl::{
     inputs::{HasTargetBytes, Input},
     Error,
 };
-use libafl_targets::{self, CMPLOG_MAP_W};
+use libafl_targets::CMPLOG_MAP_W;
 use rangemap::RangeMap;
 
 use crate::helper::FridaRuntime;
@@ -247,7 +247,7 @@ impl CmpLogRuntime {
                 ; ldp x2, x3, [sp], #0x10
                 ; b >done
                 ; self_addr:
-                ; .qword self as *mut _  as *mut c_void as i64
+                ; .qword core::ptr::from_mut(self) as *mut c_void as i64
                 ; populate_lists:
                 ; .qword  CmpLogRuntime::populate_lists as *mut c_void as i64
                 ; done:
@@ -661,11 +661,11 @@ impl CmpLogRuntime {
     )> {
         let bytes = instr.bytes();
         let mut decoder =
-            iced_x86::Decoder::with_ip(64, bytes, instr.address(), iced_x86::DecoderOptions::NONE);
+            iced_x86::Decoder::with_ip(64, bytes, instr.address(), DecoderOptions::NONE);
         if !decoder.can_decode() {
             return None;
         }
-        let mut instruction = iced_x86::Instruction::default();
+        let mut instruction = Instruction::default();
         decoder.decode_out(&mut instruction);
         match instruction.mnemonic() {
             iced_x86::Mnemonic::Cmp | iced_x86::Mnemonic::Sub => {} // continue

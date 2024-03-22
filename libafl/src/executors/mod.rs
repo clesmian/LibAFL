@@ -174,7 +174,7 @@ pub mod test {
         executors::{Executor, ExitKind},
         fuzzer::test::NopFuzzer,
         inputs::{BytesInput, HasTargetBytes},
-        state::{test::NopState, HasExecutions, State, UsesState},
+        state::{HasExecutions, NopState, State, UsesState},
     };
 
     /// A simple executor that does nothing.
@@ -497,17 +497,13 @@ pub mod pybind {
     impl HasObservers for PythonExecutor {
         #[inline]
         fn observers(&self) -> &PythonObserversTuple {
-            let ptr = unwrap_me!(self.wrapper, e, {
-                core::ptr::from_ref::<PythonObserversTuple>(e.observers())
-            });
+            let ptr = unwrap_me!(self.wrapper, e, { core::ptr::from_ref(e.observers()) });
             unsafe { ptr.as_ref().unwrap() }
         }
 
         #[inline]
         fn observers_mut(&mut self) -> &mut PythonObserversTuple {
-            let ptr = unwrap_me_mut!(self.wrapper, e, {
-                core::ptr::from_mut::<PythonObserversTuple>(e.observers_mut())
-            });
+            let ptr = unwrap_me_mut!(self.wrapper, e, { core::ptr::from_mut(e.observers_mut()) });
             unsafe { ptr.as_mut().unwrap() }
         }
     }

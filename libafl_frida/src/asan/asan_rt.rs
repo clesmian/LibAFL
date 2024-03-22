@@ -542,7 +542,7 @@ impl AsanRuntime {
     #[allow(clippy::items_after_statements)]
     #[allow(clippy::too_many_lines)]
     fn hook_functions(&mut self, gum: &Gum) {
-        let mut interceptor = frida_gum::interceptor::Interceptor::obtain(gum);
+        let mut interceptor = Interceptor::obtain(gum);
 
         macro_rules! hook_func {
             ($lib:expr, $name:ident, ($($param:ident : $param_type:ty),*), $return_type:ty) => {
@@ -565,7 +565,7 @@ impl AsanRuntime {
                     interceptor.replace(
                         frida_gum::Module::find_export_by_name($lib, stringify!($name)).expect("Failed to find function"),
                         NativePointer([<replacement_ $name>] as *mut c_void),
-                        NativePointer(self as *mut _ as *mut c_void)
+                        NativePointer(core::ptr::from_mut(self) as *mut c_void)
                     ).ok();
                 }
             }
@@ -590,7 +590,7 @@ impl AsanRuntime {
                     interceptor.replace(
                         frida_gum::Module::find_export_by_name($lib, stringify!($name)).expect("Failed to find function"),
                         NativePointer([<replacement_ $name>] as *mut c_void),
-                        NativePointer(self as *mut _ as *mut c_void)
+                        NativePointer(core::ptr::from_mut(self) as *mut c_void)
                     ).ok();
                 }
             }
@@ -1942,7 +1942,7 @@ impl AsanRuntime {
             ;->accessed_address:
             ; .dword 0x0
             ; self_addr:
-            ; .qword core::ptr::from_mut(self)  as *mut c_void as i64
+            ; .qword core::ptr::from_mut(self) as *mut c_void as i64
             ; self_regs_addr:
             ; .qword addr_of_mut!(self.regs) as i64
             ; trap_func:
@@ -2041,7 +2041,7 @@ impl AsanRuntime {
             ; br x1 // go back to the 'return address'
 
             ; self_addr:
-            ; .qword self as *mut _  as *mut c_void as i64
+            ; .qword core::ptr::from_mut(self) as *mut c_void as i64
             ; self_regs_addr:
             ; .qword addr_of_mut!(self.regs) as i64
             ; trap_func:
