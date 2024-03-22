@@ -47,7 +47,7 @@ impl<F, S> Feedback<S> for CustomFeedback<'_, F, S>
         if !self.last_status.is_some_and(|last| -> bool {last == current_status}) {
             // Allow for individual filtering of different CustomFeedbacks
             // by supplying its name as target
-            log::info!(target: &self.name,"Switching status to {}", current_status);
+            log::info!("{}: Switching status to {}", &self.name, current_status);
             self.last_status = Some(current_status);
         }
         Ok(current_status)
