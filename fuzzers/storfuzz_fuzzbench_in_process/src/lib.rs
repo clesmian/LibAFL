@@ -414,12 +414,12 @@ fn fuzz(
                             state
                                 .named_metadata_map()
                                 .get::<MapFeedbackMetadata<u8>>(edges_feedback_name.as_str())
-                                .unwrap().set_entries
+                                .unwrap().num_covered_map_indexes
                         } else {
                             state
                                 .named_metadata_map()
                                 .get::<MapFeedbackMetadata<u8>>(data_feedback_name.as_str())
-                                .unwrap().set_entries
+                                .unwrap().num_covered_map_indexes
                         };
                     warn!(target: SWITCHER_FEEDBACK_NAME, "Initializing metadata object in state");
                     let new_meta = SwitchMetadata {
@@ -434,8 +434,8 @@ fn fuzz(
                         map_period_to_adversarial_metric(new_meta.current_period)
                     );
                     state.add_named_metadata(
+                        METADATA_KEY,
                         new_meta,
-                        METADATA_KEY
                     );
                     new_meta
                 }
@@ -455,13 +455,13 @@ fn fuzz(
                     state
                         .named_metadata_map()
                         .get::<MapFeedbackMetadata<u8>>(edges_feedback_name.as_str())
-                        .unwrap().set_entries
+                        .unwrap().num_covered_map_indexes as u64
                 } else {
                     state
                         .named_metadata_map()
                         .get::<MapFeedbackMetadata<u8>>(data_feedback_name.as_str())
-                        .unwrap().set_entries
-                };
+                        .unwrap().num_covered_map_indexes as u64
+                } ;
             // Assume we want to switch
             let mut switch = true;
 
@@ -478,12 +478,12 @@ fn fuzz(
                         state
                             .named_metadata_map()
                             .get::<MapFeedbackMetadata<u8>>(data_feedback_name.as_str())
-                            .unwrap().set_entries
+                            .unwrap().num_covered_map_indexes as u64
                     } else {
                         state
                             .named_metadata_map()
                             .get::<MapFeedbackMetadata<u8>>(edges_feedback_name.as_str())
-                            .unwrap().set_entries
+                            .unwrap().num_covered_map_indexes as u64
                     }
                 } else {
                     // Keep using the coverage for the adversarial optimization target
@@ -500,13 +500,13 @@ fn fuzz(
             };
 
             state.add_named_metadata(
+                METADATA_KEY,
                 SwitchMetadata{
                     next_switch_at: current_time().as_secs() + improvement_time,
                     next_check_at: 0,
                     target_coverage: new_target,
                     current_period: next_period
                 },
-                METADATA_KEY
             );
 
             if switch {
@@ -599,9 +599,9 @@ fn fuzz(
 
     // Ensure that combined_feedback is present in the metadata map of the state
     state.add_named_metadata(
+        &*calibration_feedback.name().to_string(),
         // Doesn't really matter as it is overwritten anyways
         MapFeedbackMetadata::<u8>::new(0),
-        &*calibration_feedback.name().to_string(),
     );
 
     // A minimization+queue policy to get testcasess from the corpus
