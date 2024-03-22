@@ -12,11 +12,12 @@ use std::{
     io::{self, Read, Write},
     path::PathBuf,
 };
+use std::cmp::{max, min};
 use std::env::{set_var, var};
 
 use env_logger;
 
-use clap::{Parser,CommandFactory};
+use clap::{Parser, CommandFactory, arg, ArgAction::Count};
 use log::{LevelFilter, warn, info};
 use libafl::{
     corpus::{Corpus, InMemoryOnDiskCorpus, OnDiskCorpus},
@@ -120,6 +121,8 @@ struct Arguments {
     #[arg(long, default_value_t = cfg!(feature = "data-cov-only"), help = "If enabled, the fuzzer disregards any coverage generated from control-flow.", group = "coverage-selection")]
     disregard_edges: bool,
     #[arg(long, requires = "coverage-selection", default_value_t = false, help = "Do not evaluate coverage if we disregard it")]
+    #[arg(short, long, default_value_t=0, action=Count, help="Verbosity level")]
+    verbose: u8,
     fast_disregard: bool,
     #[arg(long, short, default_value_t = 1000, help = "Timeout value in milliseconds")]
     timeout: u64,
@@ -153,17 +156,23 @@ pub extern "C" fn libafl_main() {
         File::from_raw_fd(new_fd)
     };
 
+    let verbosity_numeric=
+        min(
+            if !args.debug_logfile.is_empty()
+                { max(LevelFilter::Warn as u8, args.verbose) }
+            else
+                { args.verbose },
+            LevelFilter::max() as u8
+        );
+
+    let verbosity = LevelFilter::iter().nth(verbosity_numeric as usize).unwrap();
+
     env_logger::Builder::from_env(
         env_logger::Env::default().default_filter_or(
-            if args.debug_logfile.is_empty() {"warn"} else {"debug"}
+            verbosity.as_str()
         )
     )
-        .filter_module(SWITCHER_FEEDBACK_NAME,
-                       if args.debug_logfile.is_empty() {
-                           LevelFilter::Info
-                       } else {
-                           LevelFilter::Debug
-                       })
+        .filter_module(SWITCHER_FEEDBACK_NAME, max(LevelFilter::Info, verbosity))
         .target(env_logger::Target::Pipe(Box::new(stdout_cpy)))// Use copy of stdout
         .write_style(env_logger::WriteStyle::Always)// Ensure that colors are printed
         .init();
