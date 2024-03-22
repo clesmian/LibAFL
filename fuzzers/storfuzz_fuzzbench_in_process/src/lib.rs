@@ -134,9 +134,9 @@ struct Arguments {
     tokenfile: Option<PathBuf>,
     #[arg(value_name = "SECONDS",long, short='l', default_value_t = 1, help = "Time in seconds between log entries, 0 signals no wait time")]
     secs_between_log_msgs: u64,
-    #[arg(value_name = "SECONDS",long, default_t = 1800, help = "How much time does each fuzzer have to improve coverage")]
+    #[arg(value_name = "SECONDS",long, default_value_t = 1800, help = "How much time does each fuzzer have to improve coverage")]
     improvement_time: u64,
-    #[arg(value_name = "PERCENT",long, default_t = 20, help = "By how much must a fuzzer improve the adversary's coverage to be rated successful")]
+    #[arg(value_name = "PERCENT",long, default_value_t = 20, help = "By how much must a fuzzer improve the adversary's coverage to be rated successful")]
     improvement_goal: u8,
     #[arg(long, default_value_t = false, help = "Start with edge coverage only. (Default: start with full coverage)")]
     start_with_edge_coverage: bool,
