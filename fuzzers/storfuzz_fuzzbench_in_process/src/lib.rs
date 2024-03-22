@@ -386,6 +386,21 @@ fn fuzz(
                 return use_data_in_first_period;
             }
 
+            let map_period_to_coverage = |period: CoverageSelection| {
+              match period {
+                  CoverageSelection::First => {if use_data_in_first_period {"data"} else {"edge"}}
+                  CoverageSelection::Second => {if use_data_in_first_period {"edge"} else {"data"}}
+              }
+            };
+
+            let map_period_to_adversarial_metric = |period: CoverageSelection| {
+                match period {
+                    CoverageSelection::First => {if use_data_in_first_period {"edge"} else {"data"}}
+                    CoverageSelection::Second => {if use_data_in_first_period {"data"} else {"edge"}}
+                }
+            };
+
+
             let improvement_time = improvement_time;
             let improvement_factor = (100 + improvement_goal_pct) as f64 / 100f64;
 
@@ -413,6 +428,11 @@ fn fuzz(
                         target_coverage: (map_fill as f64 * improvement_factor) as u64,
                         next_check_at: 0
                     };
+                    info!(target: SWITCHER_FEEDBACK_NAME, "Starting with {} coverage. Initial target: {} entries in {} map",
+                        map_period_to_coverage(new_meta.current_period),
+                        new_meta.target_coverage,
+                        map_period_to_adversarial_metric(new_meta.current_period)
+                    );
                     state.add_named_metadata(
                         new_meta,
                         METADATA_KEY
@@ -490,11 +510,23 @@ fn fuzz(
             );
 
             if switch {
-                info!(target: SWITCHER_FEEDBACK_NAME, "Missed target by {} ({:.4}%), switching to state {:?}. New target: {}",
-                    meta.target_coverage - map_fill, (meta.target_coverage - map_fill) as f64 / map_fill as f64 * 100f64, next_period, new_target);
+                info!(target: SWITCHER_FEEDBACK_NAME, "Missed target {}/{} ({:.2}%), switching to {} coverage. New target: {} entries in {} map",
+                    map_fill,
+                    meta.target_coverage,
+                    (map_fill as f64/ meta.target_coverage as f64) * 100f64,
+                    map_period_to_coverage(next_period),
+                    new_target,
+                    map_period_to_adversarial_metric(next_period)
+                );
             } else {
-                info!(target: SWITCHER_FEEDBACK_NAME, "Reached target, staying in state {:?}. New target: {}",
-                    next_period, new_target);
+                info!(target: SWITCHER_FEEDBACK_NAME, "Reached target {}/{} ({:.2}%), continuing with {} coverage. New target: {} entries in {} map",
+                    map_fill,
+                    meta.target_coverage,
+                    (map_fill as f64/ meta.target_coverage as f64) * 100f64,
+                    map_period_to_coverage(next_period),
+                    new_target,
+                    map_period_to_adversarial_metric(next_period)
+                );
             }
 
             return match next_period {
