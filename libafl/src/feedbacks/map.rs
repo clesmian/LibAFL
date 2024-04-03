@@ -234,6 +234,37 @@ pub struct MapIndexesMetadata {
 
 libafl_bolts::impl_serdeany!(MapIndexesMetadata);
 
+/// A testcase metadata holding indexes of a bitmap (the lower 8 bit of each index signify the bits set in the respective byte)
+#[derive(Debug, Serialize, Deserialize)]
+#[cfg_attr(
+any(not(feature = "serdeany_autoreg"), miri),
+allow(clippy::unsafe_derive_deserialize)
+)] // for SerdeAny
+pub struct BitMapIndexesMetadata {
+    /// The list of indexes.
+    pub list: Vec<usize>,
+    /// The name of the map (useful for debugging purposes)
+    pub name: String
+}
+
+libafl_bolts::impl_serdeany!(BitMapIndexesMetadata);
+
+impl BitMapIndexesMetadata {
+    /// Creates a new [`BitMapIndexesMetadata`].
+    #[must_use]
+    pub fn new(list: Vec<usize>, name: String) -> Self {
+        Self { list, name}
+    }
+}
+
+impl AsSlice for BitMapIndexesMetadata {
+    type Entry = usize;
+    /// Convert to a slice
+    fn as_slice(&self) -> &[usize] {
+        self.list.as_slice()
+    }
+}
+
 impl AsSlice for MapIndexesMetadata {
     type Entry = usize;
     /// Convert to a slice
@@ -510,14 +541,24 @@ where
             {
                 if self.is_bitmap {
                     map_state.num_covered_map_indexes += ((history_map[i] & value) ^ value).count_ones() as usize;
-                } else if history_map[i] == initial {
-                    map_state.num_covered_map_indexes += 1;
+                    // Hacky encoding of bits set in bitmap
+                    indices.push((i << 8 ) | value.to_usize().unwrap());
+                } else {
+                    if history_map[i] == initial {
+                        map_state.num_covered_map_indexes += 1;
+                    }
+                    indices.push(i);
                 }
                 history_map[i] = R::reduce(history_map[i], value);
-                indices.push(i);
             }
-            testcase.add_metadata(meta);
-            let meta = MapIndexesMetadata::new(indices, self.name.clone());
+
+            if self.is_bitmap{
+                let meta = BitMapIndexesMetadata::new(indices, self.name.clone());
+                testcase.add_metadata(meta);
+            } else {
+                let meta = MapIndexesMetadata::new(indices, self.name.clone());
+                testcase.add_metadata(meta);
+            };
         } else {
             for (i, value) in observer
                 .as_iter()
