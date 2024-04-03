@@ -18,19 +18,18 @@ use std::env::{set_var, var};
 use env_logger;
 
 use clap::{Parser, CommandFactory, arg, ArgAction::Count};
-use log::{LevelFilter, warn, info};
+use log::LevelFilter;
 use libafl::{
-    corpus::{Corpus, InMemoryOnDiskCorpus, OnDiskCorpus},
+    corpus::{Corpus, OnDiskCorpus},
     events::SimpleRestartingEventManager,
     executors::{inprocess::InProcessExecutor, ExitKind},
-    feedback_or, feedback_and_fast, feedback_not,
+    feedback_or, feedback_and_fast,
     feedbacks::{
         CrashFeedback,
         MaxMapFeedback,
         TimeFeedback,
         TimeoutFeedback,
         ConstFeedback,
-        custom::CustomFeedback
     },
     fuzzer::{Fuzzer, StdFuzzer},
     inputs::{BytesInput, HasTargetBytes},
@@ -135,12 +134,6 @@ struct Arguments {
     tokenfile: Option<PathBuf>,
     #[arg(value_name = "SECONDS",long, short='l', default_value_t = 1, help = "Time in seconds between log entries, 0 signals no wait time")]
     secs_between_log_msgs: u64,
-    #[arg(value_name = "SECONDS",long, default_value_t = 1800, help = "How much time does each fuzzer have to improve coverage")]
-    improvement_time: u64,
-    #[arg(value_name = "PERCENT",long, default_value_t = 20, help = "By how much must a fuzzer improve the adversary's coverage to be rated successful")]
-    improvement_goal: u8,
-    #[arg(long, default_value_t = false, help = "Start with edge coverage only. (Default: start with full coverage)")]
-    start_with_edge_coverage: bool,
     #[arg()]
     remaining: Option<Vec<String>>
 }
@@ -252,9 +245,7 @@ pub extern "C" fn libafl_main() {
          args.timeouts_are_solutions,
          // args.fast_disregard, // TODO: re-enable once implemented
          args.store_queue_metadata,
-         args.start_with_edge_coverage,
-         args.improvement_time,
-         args.improvement_goal)
+    )
         .expect("An error occurred while fuzzing");
 }
 
@@ -295,9 +286,6 @@ fn fuzz(
     timeouts_are_solutions: bool,
     // fast_disregard: bool, // TODO: re-enable once implemented
     store_queue_metadata: bool,
-    start_with_edge_coverage: bool,
-    improvement_time: u64,
-    improvement_goal_pct: u8
 ) -> Result<(), Error> {
 
     let mut stdout_cpy = unsafe {
@@ -373,178 +361,14 @@ fn fuzz(
     data_feedback.set_is_bitmap(true);
     let data_feedback = data_feedback;
 
-    let data_feedback_name = data_feedback.name().to_owned();
-    let edges_feedback_name = edge_feedback.name().to_owned();
-
     let calibration_feedback = AflMapFeedback::new(&calibration_observer);
     let calibration_stage = CalibrationStage::new(&calibration_feedback);
 
-    let use_data_in_first_period = !start_with_edge_coverage;
-    let is_it_time_for_data_feedback = CustomFeedback::new(
-        SWITCHER_FEEDBACK_NAME, |state: &mut StdState<BytesInput, CustomInMemOnDiskCorpus<BytesInput>, StdRand, OnDiskCorpus<BytesInput>>| -> bool {
-            if state.must_load_initial_inputs(){
-                // We are not finished loading initial inputs. Return initial state
-                return use_data_in_first_period;
-            }
-
-            let map_period_to_coverage = |period: CoverageSelection| {
-              match period {
-                  CoverageSelection::First => {if use_data_in_first_period {"data"} else {"edge"}}
-                  CoverageSelection::Second => {if use_data_in_first_period {"edge"} else {"data"}}
-              }
-            };
-
-            let map_period_to_adversarial_metric = |period: CoverageSelection| {
-                match period {
-                    CoverageSelection::First => {if use_data_in_first_period {"edge"} else {"data"}}
-                    CoverageSelection::Second => {if use_data_in_first_period {"data"} else {"edge"}}
-                }
-            };
-
-
-            let improvement_time = improvement_time;
-            let improvement_factor = (100 + improvement_goal_pct) as f64 / 100f64;
-
-            let meta = match state.named_metadata::<SwitchMetadata>(METADATA_KEY) {
-                Ok(t) => {
-                    *t
-                },
-                Err(_) => {
-                    let map_fill =
-                        if use_data_in_first_period {
-                            state
-                                .named_metadata_map()
-                                .get::<MapFeedbackMetadata<u8>>(edges_feedback_name.as_str())
-                                .unwrap().num_covered_map_indexes
-                        } else {
-                            state
-                                .named_metadata_map()
-                                .get::<MapFeedbackMetadata<u8>>(data_feedback_name.as_str())
-                                .unwrap().num_covered_map_indexes
-                        };
-                    warn!(target: SWITCHER_FEEDBACK_NAME, "Initializing metadata object in state");
-                    let new_meta = SwitchMetadata {
-                        next_switch_at: current_time().as_secs() + improvement_time, // Give half an hour as a start
-                        current_period: CoverageSelection::First,
-                        target_coverage: (map_fill as f64 * improvement_factor) as u64,
-                        next_check_at: 0
-                    };
-                    info!(target: SWITCHER_FEEDBACK_NAME, "Starting with {} coverage. Initial target: {} entries in {} map",
-                        map_period_to_coverage(new_meta.current_period),
-                        new_meta.target_coverage,
-                        map_period_to_adversarial_metric(new_meta.current_period)
-                    );
-                    state.add_named_metadata(
-                        METADATA_KEY,
-                        new_meta,
-                    );
-                    new_meta
-                }
-            };
-
-            // It is not time to switch yet
-            if meta.next_switch_at > current_time().as_secs(){
-                return match meta.current_period {
-                    CoverageSelection::First => use_data_in_first_period,
-                    CoverageSelection::Second => !use_data_in_first_period
-                }
-            }
-
-            let map_fill =
-                if ( use_data_in_first_period && matches!(meta.current_period, CoverageSelection::First) ) ||
-                    ( !use_data_in_first_period && matches!(meta.current_period, CoverageSelection::Second) ){
-                    state
-                        .named_metadata_map()
-                        .get::<MapFeedbackMetadata<u8>>(edges_feedback_name.as_str())
-                        .unwrap().num_covered_map_indexes as u64
-                } else {
-                    state
-                        .named_metadata_map()
-                        .get::<MapFeedbackMetadata<u8>>(data_feedback_name.as_str())
-                        .unwrap().num_covered_map_indexes as u64
-                } ;
-            // Assume we want to switch
-            let mut switch = true;
-
-            // We don't want to switch if the target has been reached
-            if map_fill >= meta.target_coverage {
-                switch = false;
-            }
-
-            let new_target =
-                ( if switch {
-                    // Get the coverage for our current optimization target
-                    if ( use_data_in_first_period && matches!(meta.current_period, CoverageSelection::First) ) ||
-                        ( !use_data_in_first_period && matches!(meta.current_period, CoverageSelection::Second) ){
-                        state
-                            .named_metadata_map()
-                            .get::<MapFeedbackMetadata<u8>>(data_feedback_name.as_str())
-                            .unwrap().num_covered_map_indexes as u64
-                    } else {
-                        state
-                            .named_metadata_map()
-                            .get::<MapFeedbackMetadata<u8>>(edges_feedback_name.as_str())
-                            .unwrap().num_covered_map_indexes as u64
-                    }
-                } else {
-                    // Keep using the coverage for the adversarial optimization target
-                    map_fill
-                }  as f64 * improvement_factor ) as u64;
-
-            let next_period = if switch {
-                match meta.current_period {
-                    CoverageSelection::First => { CoverageSelection::Second }
-                    CoverageSelection::Second => { CoverageSelection::First }
-                }
-            } else {
-                meta.current_period
-            };
-
-            state.add_named_metadata(
-                METADATA_KEY,
-                SwitchMetadata{
-                    next_switch_at: current_time().as_secs() + improvement_time,
-                    next_check_at: 0,
-                    target_coverage: new_target,
-                    current_period: next_period
-                },
-            );
-
-            if switch {
-                info!(target: SWITCHER_FEEDBACK_NAME, "Missed target {}/{} ({:.2}%), switching to {} coverage. New target: {} entries in {} map",
-                    map_fill,
-                    meta.target_coverage,
-                    (map_fill as f64/ meta.target_coverage as f64) * 100f64,
-                    map_period_to_coverage(next_period),
-                    new_target,
-                    map_period_to_adversarial_metric(next_period)
-                );
-            } else {
-                info!(target: SWITCHER_FEEDBACK_NAME, "Reached target {}/{} ({:.2}%), continuing with {} coverage. New target: {} entries in {} map",
-                    map_fill,
-                    meta.target_coverage,
-                    (map_fill as f64/ meta.target_coverage as f64) * 100f64,
-                    map_period_to_coverage(next_period),
-                    new_target,
-                    map_period_to_adversarial_metric(next_period)
-                );
-            }
-
-            return match next_period {
-                CoverageSelection::First => {use_data_in_first_period}
-                CoverageSelection::Second => {!use_data_in_first_period}
-            };
-        }
-    );
 
     let mut feedback = feedback_or!(
         feedback_and_fast!(
             edge_feedback,
-            feedback_not!(is_it_time_for_data_feedback.clone())
-        ),
-        feedback_and_fast!(
-            data_feedback,
-            is_it_time_for_data_feedback
+            data_feedback
         ),
         // Time feedback, this one does not need a feedback state
         TimeFeedback::with_observer(&time_observer)
