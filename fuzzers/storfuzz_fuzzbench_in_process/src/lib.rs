@@ -75,6 +75,7 @@ use libafl_targets::__storfuzz_introspect;
 
 use storfuzz_constants::DEFAULT_ASAN_OPTIONS;
 use serde::{Deserialize, Serialize};
+use libafl::corpus::CustomInMemOnDiskCorpus;
 
 
 #[derive(Debug, Serialize, Deserialize, SerdeAny)]
@@ -380,7 +381,7 @@ fn fuzz(
 
     let use_data_in_first_period = !start_with_edge_coverage;
     let is_it_time_for_data_feedback = CustomFeedback::new(
-        SWITCHER_FEEDBACK_NAME, |state: &mut StdState<BytesInput, InMemoryOnDiskCorpus<BytesInput>, StdRand, OnDiskCorpus<BytesInput>>| -> bool {
+        SWITCHER_FEEDBACK_NAME, |state: &mut StdState<BytesInput, CustomInMemOnDiskCorpus<BytesInput>, StdRand, OnDiskCorpus<BytesInput>>| -> bool {
             if state.must_load_initial_inputs(){
                 // We are not finished loading initial inputs. Return initial state
                 return use_data_in_first_period;
@@ -562,9 +563,9 @@ fn fuzz(
             StdRand::with_seed(current_nanos()),
             // Corpus that will be evolved, we keep it in memory for performance
             if store_queue_metadata{
-                InMemoryOnDiskCorpus::new(corpus_dir).unwrap()
+                CustomInMemOnDiskCorpus::new(corpus_dir,5).unwrap()
             } else {
-                InMemoryOnDiskCorpus::no_meta(corpus_dir).unwrap()
+                CustomInMemOnDiskCorpus::no_meta(corpus_dir, 5).unwrap()
             },
             // Corpus in which we store solutions (crashes in this example),
             // on disk so the user can get them after stopping the fuzzer
