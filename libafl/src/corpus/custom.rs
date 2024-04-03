@@ -4,7 +4,7 @@ use alloc::{collections::vec_deque::VecDeque, string::String, vec::Vec};
 use core::cell::RefCell;
 use std::collections::HashMap;
 use std::path::Path;
-use log::debug;
+use log::{debug, error};
 
 use serde::{Deserialize, Serialize};
 use libafl_bolts::AsSlice;
@@ -62,8 +62,13 @@ impl<I> Corpus for CustomInMemOnDiskCorpus<I>
                 while test_cases.len() >= self.max_test_cases_with_same_code_cov {
                     // TODO Is there a more useful strategy?
                     let to_remove = test_cases.pop_back();
-                    debug!("Removing test case {:?}", to_remove);
-                    self.inner.remove(to_remove.unwrap()).unwrap();
+                    debug!("Removing test case {:?} {:?}",
+                        to_remove,
+                        self.inner.get(to_remove.unwrap())
+                    );
+                    if let Err(e) = self.inner.remove(to_remove.unwrap()){
+                        error!("{}", e);
+                    }
                 }
             } else {
                 self.code_cov_maps.insert(meta_as_vec.clone(), VecDeque::from([]));
