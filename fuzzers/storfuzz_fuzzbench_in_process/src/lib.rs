@@ -134,6 +134,8 @@ struct Arguments {
     tokenfile: Option<PathBuf>,
     #[arg(value_name = "SECONDS",long, short='l', default_value_t = 1, help = "Time in seconds between log entries, 0 signals no wait time")]
     secs_between_log_msgs: u64,
+    #[arg(long="max-test-cases", default_value_t = 5, help = "Maximum number of test cases to keep that have the same code coverage")]
+    max_test_cases_with_same_coverage: usize,
     #[arg()]
     remaining: Option<Vec<String>>
 }
@@ -245,6 +247,7 @@ pub extern "C" fn libafl_main() {
          args.timeouts_are_solutions,
          // args.fast_disregard, // TODO: re-enable once implemented
          args.store_queue_metadata,
+         args.max_test_cases_with_same_coverage,
     )
         .expect("An error occurred while fuzzing");
 }
@@ -286,6 +289,7 @@ fn fuzz(
     timeouts_are_solutions: bool,
     // fast_disregard: bool, // TODO: re-enable once implemented
     store_queue_metadata: bool,
+    max_test_cases_with_same_coverage: usize,
 ) -> Result<(), Error> {
 
     let mut stdout_cpy = unsafe {
@@ -387,9 +391,9 @@ fn fuzz(
             StdRand::with_seed(current_nanos()),
             // Corpus that will be evolved, we keep it in memory for performance
             if store_queue_metadata{
-                CustomInMemOnDiskCorpus::new(corpus_dir,5).unwrap()
+                CustomInMemOnDiskCorpus::new(corpus_dir,max_test_cases_with_same_coverage).unwrap()
             } else {
-                CustomInMemOnDiskCorpus::no_meta(corpus_dir, 5).unwrap()
+                CustomInMemOnDiskCorpus::no_meta(corpus_dir, max_test_cases_with_same_coverage).unwrap()
             },
             // Corpus in which we store solutions (crashes in this example),
             // on disk so the user can get them after stopping the fuzzer
