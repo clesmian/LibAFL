@@ -228,6 +228,8 @@ pub struct MapIndexesMetadata {
     pub list: Vec<usize>,
     /// A refcount used to know when we can remove this metadata
     pub tcref: isize,
+    /// The name of the map (useful for debugging purposes)
+    pub name: String
 }
 
 libafl_bolts::impl_serdeany!(MapIndexesMetadata);
@@ -260,8 +262,8 @@ impl HasRefCnt for MapIndexesMetadata {
 impl MapIndexesMetadata {
     /// Creates a new [`struct@MapIndexesMetadata`].
     #[must_use]
-    pub fn new(list: Vec<usize>) -> Self {
-        Self { list, tcref: 0 }
+    pub fn new(list: Vec<usize>, name: String) -> Self {
+        Self { list, tcref: 0 , name}
     }
 }
 
@@ -514,8 +516,8 @@ where
                 history_map[i] = R::reduce(history_map[i], value);
                 indices.push(i);
             }
-            let meta = MapIndexesMetadata::new(indices);
             testcase.add_metadata(meta);
+            let meta = MapIndexesMetadata::new(indices, self.name.clone());
         } else {
             for (i, value) in observer
                 .as_iter()
