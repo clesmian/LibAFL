@@ -119,6 +119,7 @@ pub mod serdeany_registry {
         hash_map::{Values, ValuesMut},
         HashMap,
     };
+    use log::{debug, info};
     use serde::{Deserialize, Serialize};
 
     use crate::{
@@ -323,6 +324,10 @@ pub mod serdeany_registry {
         where
             T: crate::serdeany::SerdeAny,
         {
+            if self.contains::<T>(){
+                info!("Overwriting entry for type '{}' in SerdeAnyMap", type_repr::<T>());
+                debug!("Overwritten value: {:?}", self.get::<T>().unwrap());
+            }
             self.insert_boxed(Box::new(t));
         }
 
