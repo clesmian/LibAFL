@@ -381,8 +381,8 @@ where
 /// The most common AFL-like feedback type
 #[derive(Clone, Debug)]
 pub struct MapFeedback<N, O, R, S, T> {
-    /// Indexes used in the last observation
-    indexes: bool,
+    /// Flag toggling whether to track indexes that are set
+    track_indexes: bool,
     /// New indexes observed in the last observation
     novelties: Option<Vec<usize>>,
     /// Name identifier of this instance
@@ -497,7 +497,7 @@ where
 
         let history_map = map_state.history_map.as_mut_slice();
 
-        if self.indexes {
+        if self.track_indexes {
             let mut indices = Vec::new();
 
             for (i, value) in observer
@@ -723,7 +723,7 @@ where
     #[must_use]
     pub fn new(map_observer: &O) -> Self {
         Self {
-            indexes: false,
+            track_indexes: false,
             novelties: None,
             name: map_observer.name().to_string(),
             observer_name: map_observer.name().to_string(),
@@ -737,7 +737,7 @@ where
     #[must_use]
     pub fn tracking(map_observer: &O, track_indexes: bool, track_novelties: bool) -> Self {
         Self {
-            indexes: track_indexes,
+            track_indexes,
             novelties: if track_novelties { Some(vec![]) } else { None },
             name: map_observer.name().to_string(),
             observer_name: map_observer.name().to_string(),
@@ -751,7 +751,7 @@ where
     #[must_use]
     pub fn with_names(name: &'static str, observer_name: &'static str) -> Self {
         Self {
-            indexes: false,
+            track_indexes: false,
             novelties: None,
             name: name.to_string(),
             observer_name: observer_name.to_string(),
@@ -773,7 +773,7 @@ where
     #[must_use]
     pub fn with_name(name: &'static str, map_observer: &O) -> Self {
         Self {
-            indexes: false,
+            track_indexes: false,
             novelties: None,
             name: name.to_string(),
             observer_name: map_observer.name().to_string(),
@@ -792,7 +792,7 @@ where
         track_novelties: bool,
     ) -> Self {
         Self {
-            indexes: track_indexes,
+            track_indexes,
             novelties: if track_novelties { Some(vec![]) } else { None },
             observer_name: observer_name.to_string(),
             stats_name: create_stats_name(name),
