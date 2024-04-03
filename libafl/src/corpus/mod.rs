@@ -21,6 +21,11 @@ pub mod cached;
 #[cfg(feature = "std")]
 pub use cached::CachedOnDiskCorpus;
 
+#[cfg(feature = "std")]
+pub mod custom;
+#[cfg(feature = "std")]
+pub use custom::CustomInMemOnDiskCorpus;
+
 #[cfg(feature = "cmin")]
 pub mod minimizer;
 use core::{cell::RefCell, fmt};
