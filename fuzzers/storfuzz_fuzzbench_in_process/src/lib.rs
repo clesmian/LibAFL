@@ -20,7 +20,7 @@ use env_logger;
 use clap::{Parser, CommandFactory, arg, ArgAction::Count};
 use log::LevelFilter;
 use libafl::{
-    corpus::{Corpus, OnDiskCorpus},
+    corpus::{Corpus, InMemoryOnDiskCorpus, OnDiskCorpus},
     events::SimpleRestartingEventManager,
     executors::{inprocess::InProcessExecutor, ExitKind},
     feedback_or, feedback_and_fast,
@@ -74,7 +74,6 @@ use libafl_targets::__storfuzz_introspect;
 
 use storfuzz_constants::DEFAULT_ASAN_OPTIONS;
 use serde::{Deserialize, Serialize};
-use libafl::corpus::CustomInMemOnDiskCorpus;
 
 
 #[derive(Debug, Serialize, Deserialize, SerdeAny)]
@@ -391,9 +390,9 @@ fn fuzz(
             StdRand::with_seed(current_nanos()),
             // Corpus that will be evolved, we keep it in memory for performance
             if store_queue_metadata{
-                CustomInMemOnDiskCorpus::new(corpus_dir,max_test_cases_with_same_coverage).unwrap()
+                InMemoryOnDiskCorpus::new(corpus_dir).unwrap()
             } else {
-                CustomInMemOnDiskCorpus::no_meta(corpus_dir, max_test_cases_with_same_coverage).unwrap()
+                InMemoryOnDiskCorpus::no_meta(corpus_dir).unwrap()
             },
             // Corpus in which we store solutions (crashes in this example),
             // on disk so the user can get them after stopping the fuzzer
