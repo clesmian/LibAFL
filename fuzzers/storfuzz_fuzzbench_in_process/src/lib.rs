@@ -369,10 +369,8 @@ fn fuzz(
 
 
     let mut feedback = feedback_or!(
-        feedback_and_fast!(
-            edge_feedback,
-            data_feedback
-        ),
+        edge_feedback,
+        data_feedback,
         // Time feedback, this one does not need a feedback state
         TimeFeedback::with_observer(&time_observer)
     );
