@@ -83,8 +83,8 @@ impl<CS> Scheduler for CorpusLimitingScheduler<CS>
                     // TODO Is there a more useful strategy?
                     let to_remove = test_cases.pop_back();
                     debug!("Removing test case {:?}", to_remove);
-                    let testcase_to_remove = state.corpus().get(idx)?.borrow().deref();
-                    if let Err(e) = self.base.on_remove(state, to_remove.unwrap(), &Some(testcase_to_remove.clone())){
+                    let testcase_to_remove = state.corpus().get(idx)?.borrow().deref().clone();
+                    if let Err(e) = self.base.on_remove(state, to_remove.unwrap(), &Some(testcase_to_remove)){
                         error!("base.on_remove was unsuccessful: {}", e);
                     }
                     if let Err(e) = state.corpus_mut().remove(idx){
