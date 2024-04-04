@@ -576,20 +576,37 @@ where
         }
 
         debug_assert!(
-            history_map
-                .iter()
-                .fold(0, |acc, x| acc + usize::from(*x != initial))
-                == map_state.num_covered_map_indexes,
+            if self.is_bitmap {
+                history_map
+                    .iter()
+                    .fold(0, |acc, x| acc + (*x).count_ones()) as usize
+                    == map_state.num_covered_map_indexes
+            } else  {
+                history_map
+                    .iter()
+                    .fold(0, |acc, x| acc + usize::from(*x != initial))
+                    == map_state.num_covered_map_indexes
+            },
             "history_map had {} filled, but map_state.num_covered_map_indexes was {}",
-            history_map
-                .iter()
-                .fold(0, |acc, x| acc + usize::from(*x != initial)),
+            if self.is_bitmap {
+                history_map
+                    .iter()
+                    .fold(0, |acc, x| acc + (*x).count_ones()) as usize
+            } else  {
+                history_map
+                    .iter()
+                    .fold(0, |acc, x| acc + usize::from(*x != initial))
+            },
             map_state.num_covered_map_indexes,
         );
 
         // at this point you are executing this code, the testcase is always interesting
         let covered = map_state.num_covered_map_indexes;
-        let len = history_map.len();
+        let len = if self.is_bitmap {
+            history_map.len() * std::mem::size_of::<T>()
+        } else {
+            history_map.len()
+        };
         // opt: if not tracking optimisations, we technically don't show the *current* history
         // map but the *last* history map; this is better than walking over and allocating
         // unnecessarily
