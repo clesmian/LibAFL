@@ -40,7 +40,7 @@ use libafl::{
     },
     observers::{HitcountsMapObserver, TimeObserver},
     schedulers::{
-        powersched::PowerSchedule, IndexesLenTimeMinimizerScheduler, StdWeightedScheduler,
+        powersched::PowerSchedule, IndexesLenTimeMinimizerScheduler, StdWeightedScheduler, CorpusLimitingScheduler
     },
     stages::{
         calibrate::CalibrationStage, power::StdPowerMutationalStage,
@@ -433,11 +433,11 @@ fn fuzz(
     );
 
     // A minimization+queue policy to get testcasess from the corpus
-    let scheduler = IndexesLenTimeMinimizerScheduler::new(StdWeightedScheduler::with_schedule(
+    let scheduler = CorpusLimitingScheduler::new(IndexesLenTimeMinimizerScheduler::new(StdWeightedScheduler::with_schedule(
         &mut state,
         &calibration_observer,
         Some(PowerSchedule::FAST),
-    ));
+    )), max_test_cases_with_same_coverage);
 
     // A fuzzer with feedbacks and a corpus scheduler
     let mut fuzzer = StdFuzzer::new(scheduler, feedback, objective);
