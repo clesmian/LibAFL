@@ -5,6 +5,7 @@ use alloc::vec::Vec;
 use core::{any::type_name, cmp::Ordering, marker::PhantomData};
 
 use hashbrown::{HashMap, HashSet};
+use log::error;
 use libafl_bolts::{rands::Rand, serdeany::SerdeAny, AsSlice, HasRefCnt};
 use serde::{Deserialize, Serialize};
 
@@ -109,7 +110,11 @@ where
         idx: CorpusId,
         testcase: &Option<Testcase<<CS::State as UsesInput>::Input>>,
     ) -> Result<(), Error> {
-        self.base.on_remove(state, idx, testcase)?;
+        let res = self.base.on_remove(state, idx, testcase);
+        if let Err(e) = res {
+            error!("base.on_remove was unsuccessful: {}", e);
+            return Err(e);
+        }
         let mut entries =
             if let Some(meta) = state.metadata_map_mut().get_mut::<TopRatedsMetadata>() {
                 let entries = meta
