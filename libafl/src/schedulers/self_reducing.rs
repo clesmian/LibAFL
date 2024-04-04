@@ -7,7 +7,6 @@ use crate::prelude::{HasCorpus, HasMetadata, HasRand, RemovableScheduler, Schedu
 
 use alloc::{collections::vec_deque::VecDeque, vec::Vec};
 use std::collections::HashMap;
-use std::ops::Deref;
 use log::{debug, error};
 use crate::feedbacks::MapIndexesMetadata;
 
@@ -83,12 +82,9 @@ impl<CS> Scheduler for CorpusLimitingScheduler<CS>
                     // TODO Is there a more useful strategy?
                     let to_remove = test_cases.pop_back();
                     debug!("Removing test case {:?}", to_remove);
-                    let testcase_to_remove = state.corpus().get(idx)?.borrow().deref().clone();
-                    if let Err(e) = self.base.on_remove(state, to_remove.unwrap(), &Some(testcase_to_remove)){
+                    let removed = state.corpus_mut().remove(idx)?;
+                    if let Err(e) = self.base.on_remove(state, to_remove.unwrap(), &Some(removed)){
                         error!("base.on_remove was unsuccessful: {}", e);
-                    }
-                    if let Err(e) = state.corpus_mut().remove(idx){
-                        error!("corpus.remove was unsuccessful: {}", e);
                     }
                 }
             } else {
