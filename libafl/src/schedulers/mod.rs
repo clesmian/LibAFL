@@ -27,6 +27,10 @@ pub mod weighted;
 pub use weighted::{StdWeightedScheduler, WeightedScheduler};
 
 pub mod tuneable;
+
+mod self_reducing;
+pub use self_reducing::CorpusLimitingScheduler;
+
 use libafl_bolts::rands::Rand;
 pub use tuneable::*;
 
