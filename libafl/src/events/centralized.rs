@@ -93,15 +93,10 @@ where
     ///
     /// The port must not be bound yet to have a broker.
     #[cfg(feature = "std")]
-    pub fn on_port(shmem_provider: SP, port: u16, client_timeout: Duration) -> Result<Self, Error> {
+    pub fn on_port(shmem_provider: SP, port: u16) -> Result<Self, Error> {
         Ok(Self {
             // TODO switch to false after solving the bug
-            llmp: LlmpBroker::with_keep_pages_attach_to_tcp(
-                shmem_provider,
-                port,
-                true,
-                client_timeout,
-            )?,
+            llmp: LlmpBroker::with_keep_pages_attach_to_tcp(shmem_provider, port, true)?,
             #[cfg(feature = "llmp_compression")]
             compressor: GzipCompressor::new(COMPRESS_THRESHOLD),
             phantom: PhantomData,
@@ -292,6 +287,7 @@ where
     ) -> Result<(), Error> {
         if !self.is_main {
             // secondary node
+            let mut is_tc = false;
             let is_nt_or_heartbeat = match &mut event {
                 Event::NewTestcase {
                     input: _,
@@ -304,19 +300,26 @@ where
                     forward_id,
                 } => {
                     *forward_id = Some(ClientId(self.inner.mgr_id().0 as u32));
+                    is_tc = true;
                     true
                 }
                 Event::UpdateExecStats {
                     time: _,
                     executions: _,
                     phantom: _,
-                } => true,
+                } => true, // send it but this guy won't be handled. the only purpose is to keep this client alive else the broker thinks it is dead and will dc it
                 _ => false,
             };
+
             if is_nt_or_heartbeat {
-                return self.forward_to_main(&event);
+                self.forward_to_main(&event)?;
+                if is_tc {
+                    // early return here because we only send it to centralized not main broker.
+                    return Ok(());
+                }
             }
         }
+        // now inner llmp manager will process it
         self.inner.fire(state, event)
     }
 
@@ -501,9 +504,10 @@ where
     /// will act as a client.
     #[cfg(feature = "std")]
     pub fn on_port(inner: EM, shmem_provider: SP, port: u16, is_main: bool) -> Result<Self, Error> {
+        let client = LlmpClient::create_attach_to_tcp(shmem_provider, port)?;
         Ok(Self {
             inner,
-            client: LlmpClient::create_attach_to_tcp(shmem_provider, port)?,
+            client,
             #[cfg(feature = "llmp_compression")]
             compressor: GzipCompressor::new(COMPRESS_THRESHOLD),
             is_main,
